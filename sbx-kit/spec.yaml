@@ -1,0 +1,33 @@
+schemaVersion: "1"
+kind: mixin
+name: claudebar
+description: Links host Claude hooks and hook settings into the sandbox so sessions report status to the host menu bar
+
+commands:
+  startup:
+    - command:
+        - sh
+        - -c
+        - |
+          # Host mounts keep their original absolute path inside the microVM;
+          # glob instead of hardcoding a username so this kit is shareable.
+          # Requires the host ~/.claude to be mounted (e.g. `~/.claude:ro`).
+          HOST_CLAUDE=$(ls -d /Users/*/.claude 2>/dev/null | head -n 1)
+          [ -n "$HOST_CLAUDE" ] || exit 0
+          mkdir -p /home/agent/.claude
+
+          # Make the claude-notify hook script available where the merged
+          # settings expect it (~/.claude/hooks/claude-notify.sh).
+          if [ -e "$HOST_CLAUDE/hooks" ]; then
+            rm -rf /home/agent/.claude/hooks
+            ln -s "$HOST_CLAUDE/hooks" /home/agent/.claude/hooks
+          fi
+
+          # Merge the host's hook registrations into the sandbox settings.
+          if [ -f "$HOST_CLAUDE/settings.json" ] && command -v jq > /dev/null; then
+            [ -f /home/agent/.claude/settings.json ] || echo '{}' > /home/agent/.claude/settings.json
+            jq -s '.[0] * {hooks: .[1].hooks}' /home/agent/.claude/settings.json "$HOST_CLAUDE/settings.json" > /tmp/merged.json
+            mv /tmp/merged.json /home/agent/.claude/settings.json
+          fi
+      user: "1000"
+      description: "Link host Claude hooks and merge hook settings for the claudebar status board"
