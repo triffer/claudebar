@@ -10,20 +10,12 @@
 #               the signal bridge directory (sandbox) for the host-side watcher.
 #   --deliver   Reads a status record JSON from stdin and updates
 #               ~/.claude/notifier-sessions/<session_id>.json. Used by the watcher.
-#   --reap SID PID
-#               Detached liveness watcher spawned on SessionStart. Waits for the
-#               claude process PID to disappear, then emits an "ended" record for
-#               SID — so a session killed without SessionEnd (terminal/IDE closed,
-#               crash) still leaves the board instead of lingering until stale.
 #
 # In hook mode this script must never fail the calling session: it always
 # exits 0. In --deliver mode the exit code tells the watcher whether the
 # signal file was valid.
 
 CLAUDE_DIR="${CLAUDE_NOTIFY_HOME:-$HOME/.claude}"
-# Absolute path to this script, so the detached reaper can re-exec it even
-# after the working directory or terminal that launched the session is gone.
-SELF="$0"; [ -r "$SELF" ] || SELF="$CLAUDE_DIR/hooks/claude-notify.sh"
 # NOT ~/.claude/sessions — that directory belongs to Claude Code itself
 # (pid-named session-tracking files); our records must never mix with it.
 SESSIONS_DIR="$CLAUDE_DIR/notifier-sessions"
@@ -69,67 +61,6 @@ if [ "${1:-}" = "--deliver" ]; then
   exit $?
 fi
 
-# Route an "ended" record to the status store — locally on the host, or through
-# the signal bridge from a sandbox (same paths the hook path below uses).
-emit_ended() { # $1 = session_id
-  local record
-  record=$(jq -n --arg s "$1" '{session_id: $s, state: "ended"}') || return 1
-  if [ -n "$SIGNALS_DIR" ] && [ -d "$SIGNALS_DIR" ]; then
-    local name="evt_$(date +%s)_$$_${RANDOM}" tmp
-    tmp="$SIGNALS_DIR/.$name.tmp"
-    printf '%s\n' "$record" > "$tmp" 2>/dev/null && mv "$tmp" "$SIGNALS_DIR/$name.json" 2>/dev/null
-  else
-    deliver <<<"$record"
-  fi
-}
-
-# --reap SID PID: block until PID dies, then remove SID from the board. Runs
-# detached (nohup) so a terminal/IDE SIGHUP can't kill it before it reports.
-if [ "${1:-}" = "--reap" ]; then
-  reap_sid="${2:-}"; reap_pid="${3:-}"
-  [ -n "$reap_sid" ] && [ -n "$reap_pid" ] || exit 0
-  while kill -0 "$reap_pid" 2>/dev/null; do sleep 5; done
-  emit_ended "$reap_sid"
-  rm -f "${TMPDIR:-/tmp}/claude-notify-${reap_sid}.reaper"
-  exit 0
-fi
-
-# Walk up from this hook process to the long-lived claude process. Hooks run as
-# descendants of claude; anchoring the reaper on the claude ancestor (rather than
-# $PPID, which may be a transient `sh -c` wrapper that exits the instant the hook
-# returns) avoids a false "session ended" the moment the wrapper dies. The hook
-# itself and its wrapper both carry "claude-notify" in their command line, so we
-# skip those and keep climbing to the real claude process. Falls back to $PPID.
-find_claude_pid() {
-  local pid=$PPID depth=0 cmd
-  while [ "${pid:-0}" -gt 1 ] 2>/dev/null && [ "$depth" -lt 8 ]; do
-    cmd=$(ps -o command= -p "$pid" 2>/dev/null || ps -o comm= -p "$pid" 2>/dev/null)
-    case "$cmd" in
-      *claude-notify*) ;;                 # this hook / its wrapper — keep climbing
-      *[Cc]laude*) echo "$pid"; return 0 ;;
-    esac
-    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-    [ -n "$pid" ] || break
-    depth=$((depth + 1))
-  done
-  echo "$PPID"
-}
-
-# Launch one detached reaper per session (guarded against duplicate SessionStart
-# events, e.g. resume). No-op if the claude process can't be located or is gone.
-spawn_reaper() { # $1 = session_id
-  local sid=$1 pf old cpid
-  pf="${TMPDIR:-/tmp}/claude-notify-${sid}.reaper"
-  if [ -f "$pf" ]; then
-    old=$(cat "$pf" 2>/dev/null)
-    [ -n "$old" ] && kill -0 "$old" 2>/dev/null && return 0
-  fi
-  cpid=$(find_claude_pid)
-  { [ -n "$cpid" ] && kill -0 "$cpid" 2>/dev/null; } || return 0
-  nohup bash "$SELF" --reap "$sid" "$cpid" >/dev/null 2>&1 &
-  echo "$!" > "$pf" 2>/dev/null
-}
-
 # ---------------------------------------------------------------- hook mode
 
 INPUT=$(cat)
@@ -152,7 +83,6 @@ case "${EVENT:-}" in
   SessionStart)
     [ "${SOURCE:-}" = "compact" ] && exit 0
     STATE="ready"; MESSAGE="Session started"
-    spawn_reaper "$SESSION_ID"
     ;;
   UserPromptSubmit|PreToolUse) STATE="working" ;;
   Stop)       STATE="ready"; MESSAGE="${MESSAGE:-Finished responding}" ;;
@@ -193,9 +123,6 @@ esac
 
 if [ "$STATE" = "ended" ]; then
   rm -f "$CTX"
-  # Graceful exit already reports the end — stop the now-redundant reaper.
-  rpf="${TMPDIR:-/tmp}/claude-notify-${SESSION_ID}.reaper"
-  [ -f "$rpf" ] && { kill "$(cat "$rpf" 2>/dev/null)" 2>/dev/null; rm -f "$rpf"; }
 else
   printf '%s\n%s\n%s\n' "$STATE" "$PROMPT" "$PENDING" > "$CTX" 2>/dev/null
 fi

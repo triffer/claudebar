@@ -134,13 +134,9 @@ your IDE.
   `ls -d /Users/*/.claude-signals` must exist and be writable) and the
   `sbx-kit` kit.
 - **Malformed events** land in `~/.claude/signals-rejected/` instead of looping.
-- **Menu bar shows stale sessions** — sessions killed abruptly (IDE/terminal
-  closed, crash) never send `SessionEnd`. A per-session *reaper* (spawned on
-  `SessionStart`) watches the Claude process and removes the row within a few
-  seconds of it dying, so manual dismissing is rarely needed. If the whole
-  machine/sandbox is torn down the reaper dies with it before it can report —
-  those rows fade out after `STALE_HOURS`, are deleted after 2 days, or can be
-  cleared with the per-session *Dismiss* / *Clear all* actions.
+- **Menu bar shows stale sessions** — sessions from crashed/killed Claude
+  processes never send `SessionEnd`; they fade out after `STALE_HOURS` and are
+  deleted after 2 days, or use the per-session *Dismiss* / *Clear all* actions.
 
 
 ## How it works
@@ -179,16 +175,6 @@ One hook script handles six Claude Code events and tracks a state per session:
 
 (`SessionStart` from auto-compaction is ignored — it fires mid-task and must
 not flip a busy session.)
-
-On `SessionStart` the hook also spawns a detached **reaper** (`--reap`): a
-`nohup`'d watcher that anchors on the long-lived `claude` process (walking up
-the parent chain, since the hook's immediate parent may be a transient wrapper
-shell) and emits an `ended` record the moment that process disappears. This
-covers the common case a `SessionEnd` misses — closing the IDE window or
-terminal, or a crash — for host and sandbox sessions alike (a sandbox reaper
-drops the `ended` record through the same signal bridge). One reaper per
-session, guarded by a pidfile so resumes don't stack them, and torn down on a
-graceful `SessionEnd`.
 
 `PreToolUse` is registered for two reasons: a session flips back to `working`
 right after you answer a permission prompt, and — since `PreToolUse` fires
