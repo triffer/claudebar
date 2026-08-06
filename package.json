@@ -1,6 +1,6 @@
 {
   "name": "claudebar",
-  "version": "1.0.0",
+  "version": "0.0.0-development",
   "description": "Claude Code session status in your macOS menu bar (SwiftBar).",
   "bin": {
     "claudebar": "bin/claudebar.js"
@@ -15,6 +15,7 @@
     "README.md"
   ],
   "scripts": {
+    "release": "semantic-release",
     "postpack": "true"
   },
   "engines": {
@@ -39,5 +40,15 @@
   "homepage": "https://github.com/triffer/claudebar#readme",
   "bugs": {
     "url": "https://github.com/triffer/claudebar/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "semantic-release": "^24.2.1"
   }
 }

@@ -159,6 +159,28 @@ your IDE.
   deleted after 2 days, or use the per-session *Dismiss* / *Clear all* actions.
 
 
+## Contributing & releases
+
+Releases are fully automated with [semantic-release](https://semantic-release.gitbook.io/).
+Every merge to `main` runs the `Release` workflow, which reads the commit
+messages, decides the next version, tags it, updates `CHANGELOG.md`, creates a
+GitHub Release, and publishes to npm (so `npx claudebar` always resolves the
+latest version).
+
+Because the version is derived from commits, **commit messages must follow
+[Conventional Commits](https://www.conventionalcommits.org/)**:
+
+| Commit prefix                     | Release        |
+|-----------------------------------|----------------|
+| `fix: …`                          | patch (`x.y.Z`)|
+| `feat: …`                         | minor (`x.Y.0`)|
+| `feat!: …` / `BREAKING CHANGE:`   | major (`X.0.0`)|
+| `chore:`, `docs:`, `refactor:`, … | no release     |
+
+Every PR runs `commitlint` against its commits, so a non-conforming message is
+caught before merge. Don't bump the version in `package.json` by hand — it is
+managed by the release pipeline.
+
 ## How it works
 
 ```
