@@ -44,6 +44,25 @@ reads `✳ 🔴2 🟠2 🟢2 🔵3`. Reproduce this board for a screenshot with
 
 ## Install (Mac host)
 
+### Via npm (recommended)
+
+One command, fully set up — no clone required:
+
+```bash
+npx claudebar install
+```
+
+Missing prerequisites (`jq`, [SwiftBar](https://swiftbar.app)) are installed
+automatically via Homebrew, and SwiftBar's plugin folder is configured for you,
+so the menu bar comes up without any manual folder picking. Pass `--no-deps` to
+skip the auto-install and wire up only against what's already installed. Remove
+everything with `npx claudebar uninstall`.
+
+> Requires [Homebrew](https://brew.sh) for the auto-install step. Restart running
+> Claude Code sessions afterwards so the hooks load.
+
+### From a clone
+
 Requires `jq` and [SwiftBar](https://swiftbar.app):
 
 ```bash
@@ -64,7 +83,8 @@ The installer is idempotent — re-run it after pulling updates. It:
 
 Restart running Claude Code sessions afterwards so the hooks load.
 
-Remove everything with `./claudebar/install.sh --uninstall`.
+Remove everything with `./claudebar/install.sh --uninstall` (or `npx claudebar
+uninstall`).
 
 ## Sandboxes
 
