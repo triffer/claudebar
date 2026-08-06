@@ -21,9 +21,6 @@
   "engines": {
     "node": ">=16"
   },
-  "os": [
-    "darwin"
-  ],
   "keywords": [
     "claude",
     "claude-code",
