@@ -124,12 +124,14 @@ done
 
 n_attention=$(( n_permission + n_waiting + n_ready ))
 
-# ---- sounds on state changes (🔔 toggle below; deliberately hardcoded) ----
+# ---- detect state changes for sounds (🔔 toggle below; deliberately hardcoded) ----
 # Played from the plugin because SwiftBar is long-lived and in the GUI
 # session — hooks and the launchd watcher get their process groups reaped,
-# which kills a backgrounded afplay before it makes a sound.
+# which kills a backgrounded afplay before it makes a sound. Only collect the
+# sounds here; playback is deferred to the end so the bar repaints first.
 SOUNDS_FLAG="$CLAUDE_DIR/notify-sounds-on"
 STATE_CACHE="${TMPDIR:-/tmp}/claudebar-states"
+sounds_to_play=()
 if [ -f "$SOUNDS_FLAG" ] && [ -f "$STATE_CACHE" ] && command -v afplay >/dev/null 2>&1; then
   while read -r sid st; do
     [ -n "$sid" ] || continue
@@ -141,9 +143,7 @@ if [ -f "$SOUNDS_FLAG" ] && [ -f "$STATE_CACHE" ] && command -v afplay >/dev/nul
       ready)      snd="Purr" ;;
       *)          snd="" ;;
     esac
-    # >/dev/null keeps the backgrounded afplay from holding the plugin's
-    # stdout pipe open — SwiftBar reads until EOF.
-    [ -n "$snd" ] && afplay "/System/Library/Sounds/$snd.aiff" >/dev/null 2>&1 &
+    [ -n "$snd" ] && sounds_to_play+=("/System/Library/Sounds/$snd.aiff")
   done <<<"${states_now:-}"
 fi
 # Always refresh the snapshot (also while sounds are off / on first run), so
@@ -208,3 +208,11 @@ else
 fi
 echo "Clear all sessions | bash=/bin/sh param1=-c param2=\"rm -f $SESSIONS_DIR/*.json\" terminal=false refresh=true"
 echo "Open sessions folder | bash=/usr/bin/open param1=\"$SESSIONS_DIR\" terminal=false"
+
+# ---- play deferred sounds ----
+# Played after all output is emitted so SwiftBar repaints the bar first; the
+# brief sleep lets that paint land before the chime. Detached, stdout to
+# /dev/null so it never holds the plugin's stdout pipe open (would delay EOF).
+if (( ${#sounds_to_play[@]} > 0 )); then
+  ( sleep 0.25; for s in "${sounds_to_play[@]}"; do afplay "$s"; done ) >/dev/null 2>&1 &
+fi
