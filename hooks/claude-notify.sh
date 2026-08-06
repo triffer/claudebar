@@ -64,6 +64,13 @@ fi
 # ---------------------------------------------------------------- hook mode
 
 INPUT=$(cat)
+
+# Skip sub-agents (Task tool spawns): they carry an `agent_id`, the main
+# agent never does. Otherwise every sub-agent floods the board.
+if jq -e '.agent_id // empty' <<<"$INPUT" >/dev/null 2>&1; then
+  exit 0
+fi
+
 eval "$(jq -r '@sh "EVENT=\(.hook_event_name // "")
   SESSION_ID=\(.session_id // "unknown")
   MESSAGE=\(.message // "")
