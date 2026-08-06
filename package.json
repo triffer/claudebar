@@ -1,0 +1,43 @@
+{
+  "name": "claudebar",
+  "version": "1.0.0",
+  "description": "Claude Code session status in your macOS menu bar (SwiftBar).",
+  "bin": {
+    "claudebar": "bin/claudebar.js"
+  },
+  "files": [
+    "bin",
+    "install.sh",
+    "hooks",
+    "host",
+    "sbx-kit",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "postpack": "true"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "swiftbar",
+    "menubar",
+    "macos",
+    "status"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/triffer/claudebar.git"
+  },
+  "homepage": "https://github.com/triffer/claudebar#readme",
+  "bugs": {
+    "url": "https://github.com/triffer/claudebar/issues"
+  }
+}

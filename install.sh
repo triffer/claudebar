@@ -27,7 +27,26 @@ warn()  { printf '  \033[33m!\033[0m %s\n' "$*"; }
 die()   { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname)" = "Darwin" ] || die "Run this on your Mac host, not inside a sandbox."
-command -v jq >/dev/null 2>&1 || die "jq is required: brew install jq"
+
+# Dependency handling. By default claudebar installs any missing prerequisites
+# (jq, SwiftBar) via Homebrew so a single run gets you a working menu bar. Pass
+# --no-deps to skip this and wire up only against what is already installed.
+AUTO_DEPS=1
+
+ensure_brew() {
+  command -v brew >/dev/null 2>&1 && return 0
+  die "Homebrew is needed to auto-install dependencies — get it at https://brew.sh
+    and re-run, or install jq/SwiftBar yourself and re-run with --no-deps."
+}
+
+ensure_jq() {
+  command -v jq >/dev/null 2>&1 && return 0
+  [ "$AUTO_DEPS" = 1 ] || die "jq is required: brew install jq (or drop --no-deps)"
+  ensure_brew
+  info "installing jq…"
+  brew install jq >/dev/null || die "brew install jq failed"
+  info "jq installed"
+}
 
 filter_hooks() { # remove our (and legacy) entries from every hook event
   local tmp; tmp=$(mktemp)
@@ -44,7 +63,7 @@ uninstall() {
   echo "Uninstalling…"
   launchctl unload "$PLIST" 2>/dev/null || true
   rm -f "$PLIST"
-  [ -f "$SETTINGS" ] && filter_hooks && info "hook entries removed from settings.json"
+  [ -f "$SETTINGS" ] && command -v jq >/dev/null 2>&1 && filter_hooks && info "hook entries removed from settings.json"
   rm -f "$CLAUDE_DIR/hooks/claude-notify.sh" "$CLAUDE_DIR/claude-signal-watcher.sh" \
         "$CLAUDE_DIR/claudebar-focus.sh" \
         "$CLAUDE_DIR/claudebar-open.sh" "$CLAUDE_DIR/notify-sounds-on"   # opener: removed feature, clean up if present
@@ -59,12 +78,14 @@ uninstall() {
 for arg in "$@"; do
   case "$arg" in
     --with-menubar) ;;              # deprecated: the menu bar is now the default
+    --no-deps)      AUTO_DEPS=0 ;;  # don't auto-install jq / SwiftBar
     --uninstall)    uninstall ;;
-    *) die "unknown option: $arg (use --uninstall)" ;;
+    *) die "unknown option: $arg (use --uninstall or --no-deps)" ;;
   esac
 done
 
 echo "Installing claudebar…"
+ensure_jq
 
 # 1. Directories -------------------------------------------------------------
 # The signal bridge is a SIBLING of ~/.claude: sandboxes mount ~/.claude
@@ -199,6 +220,25 @@ info "launchd watcher loaded ($PLIST_LABEL)"
 
 # 7. Menu bar status board -----------------------------------------------------
 PLUGIN_DIR=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
+
+# Fresh machine: install SwiftBar and pick a plugin folder for the user so the
+# board comes up without SwiftBar's first-launch GUI folder picker. SwiftBar
+# honours a PluginDirectory default that is set before its first launch.
+if { [ -z "$PLUGIN_DIR" ] || [ ! -d "$PLUGIN_DIR" ]; } && [ "$AUTO_DEPS" = 1 ]; then
+  if [ ! -d "/Applications/SwiftBar.app" ]; then
+    ensure_brew
+    info "installing SwiftBar…"
+    brew install --cask swiftbar >/dev/null 2>&1 || warn "brew install --cask swiftbar failed — install it manually and re-run"
+  fi
+  if [ -d "/Applications/SwiftBar.app" ]; then
+    PLUGIN_DIR="$HOME/Library/Application Support/SwiftBar/Plugins"
+    mkdir -p "$PLUGIN_DIR"
+    defaults write com.ameba.SwiftBar PluginDirectory -string "$PLUGIN_DIR"
+    open -a SwiftBar 2>/dev/null || true
+    info "SwiftBar plugin folder set to $PLUGIN_DIR"
+  fi
+fi
+
 if [ -n "$PLUGIN_DIR" ] && [ -d "$PLUGIN_DIR" ]; then
   rm -f "$PLUGIN_DIR/claude-sessions.3s.sh"   # pre-rename plugin filename
   install -m 0755 "$SCRIPT_DIR/host/claudebar.3s.sh" "$PLUGIN_DIR/claudebar.3s.sh"
@@ -207,7 +247,7 @@ if [ -n "$PLUGIN_DIR" ] && [ -d "$PLUGIN_DIR" ]; then
 else
   warn "SwiftBar not set up — the status board needs it:"
   warn "  brew install --cask swiftbar   # then launch it and pick a plugin folder"
-  warn "  re-run: ./claudebar/install.sh"
+  warn "  re-run: claudebar install"
 fi
 
 echo
