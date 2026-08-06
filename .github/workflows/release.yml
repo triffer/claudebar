@@ -13,7 +13,6 @@ permissions:
   contents: write # create tags/releases and push the changelog + version bump
   issues: write # comment on released issues
   pull-requests: write # comment on released PRs
-  id-token: write # npm provenance (trusted publishing)
 
 jobs:
   release:
@@ -28,13 +27,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://registry.npmjs.org
 
       - run: npm ci
 
+      # semantic-release derives the version from Conventional Commits, tags it,
+      # updates CHANGELOG.md + package.json, and creates a GitHub Release. It does
+      # NOT publish to npm (npmPublish is false) — the tool ships via
+      # `npx github:triffer/claudebar`, so the git tag is the release artifact.
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
         run: npx semantic-release

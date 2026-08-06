@@ -44,19 +44,27 @@ reads `✳ 🔴2 🟠2 🟢2 🔵3`. Reproduce this board for a screenshot with
 
 ## Install (Mac host)
 
-### Via npm (recommended)
+### Via npx (recommended)
 
-One command, fully set up — no clone required:
+One command, fully set up — no clone required, and nothing to install from a
+package registry (it runs straight from this GitHub repo):
 
 ```bash
-npx claudebar install
+npx github:triffer/claudebar install
+```
+
+Pin a specific release with a tag or semver range if you want:
+
+```bash
+npx github:triffer/claudebar#v1.0.0 install       # exact release
+npx "github:triffer/claudebar#semver:^1" install  # latest 1.x
 ```
 
 Missing prerequisites (`jq`, [SwiftBar](https://swiftbar.app)) are installed
 automatically via Homebrew, and SwiftBar's plugin folder is configured for you,
 so the menu bar comes up without any manual folder picking. Pass `--no-deps` to
 skip the auto-install and wire up only against what's already installed. Remove
-everything with `npx claudebar uninstall`.
+everything with `npx github:triffer/claudebar uninstall`.
 
 > Requires [Homebrew](https://brew.sh) for the auto-install step. Restart running
 > Claude Code sessions afterwards so the hooks load.
@@ -83,8 +91,8 @@ The installer is idempotent — re-run it after pulling updates. It:
 
 Restart running Claude Code sessions afterwards so the hooks load.
 
-Remove everything with `./claudebar/install.sh --uninstall` (or `npx claudebar
-uninstall`).
+Remove everything with `./claudebar/install.sh --uninstall` (or `npx
+github:triffer/claudebar uninstall`).
 
 ## Sandboxes
 
@@ -163,9 +171,10 @@ your IDE.
 
 Releases are fully automated with [semantic-release](https://semantic-release.gitbook.io/).
 Every merge to `main` runs the `Release` workflow, which reads the commit
-messages, decides the next version, tags it, updates `CHANGELOG.md`, creates a
-GitHub Release, and publishes to npm (so `npx claudebar` always resolves the
-latest version).
+messages, decides the next version, tags it (`vX.Y.Z`), updates `CHANGELOG.md`,
+and creates a GitHub Release. There's no npm-registry publish — the tool is
+distributed straight from this repo (`npx github:triffer/claudebar`), so the
+git tag *is* the release artifact and `#semver:` ranges resolve against it.
 
 Because the version is derived from commits, **commit messages must follow
 [Conventional Commits](https://www.conventionalcommits.org/)**:
