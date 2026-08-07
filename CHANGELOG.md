@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/triffer/claudebar/compare/v1.1.0...v1.2.0) (2026-08-07)
+
+
+### Features
+
+* show each session's /resume title in the menu bar ([2b18ae2](https://github.com/triffer/claudebar/commit/2b18ae2cfb8bafea2f18ad9ed827d526ea77d364))
+
 # [1.1.0](https://github.com/triffer/claudebar/compare/v1.0.0...v1.1.0) (2026-08-07)
 
 
