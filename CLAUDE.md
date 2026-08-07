@@ -64,3 +64,5 @@ lints every commit in a PR. Don't bump `package.json` by hand.
 
 **Max line length is 100** — enforced by commitlint on the header *and* on every
 body and footer line, so wrap the body rather than writing one long paragraph.
+Dependabot's own commits are exempt (`ignores` in `commitlint.config.js`): it
+generates compare links that are longer than 100 characters on one line.
