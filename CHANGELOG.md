@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/triffer/claudebar/compare/v1.2.0...v1.3.0) (2026-08-07)
+
+
+### Features
+
+* show the installed version and offer one-click updates ([c77c15b](https://github.com/triffer/claudebar/commit/c77c15b05cb908e866bf5b9e5f6ed0180d01ec1f))
+
 # [1.2.0](https://github.com/triffer/claudebar/compare/v1.1.0...v1.2.0) (2026-08-07)
 
 
