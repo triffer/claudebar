@@ -51,10 +51,11 @@ with [`examples/demo-board.sh`](examples/demo-board.sh).*
   alone rarely tells you which box you're looking at.
 - ⬆️ **Tells you when it's out of date** — the bottom of the dropdown always
   names the version you're running. Once a day it asks GitHub whether there's
-  a newer release; when there is, that row turns into an orange *click to
-  update* button that runs the upgrade in a Terminal window, the same way you
-  installed it. You also get one macOS notification per release — one, not one
-  every three seconds.
+  a newer release; when there is, that row turns orange and links to the
+  release notes, which end with the command that installs it. A second row
+  copies that command to your clipboard. claudebar never updates itself and
+  never notifies you — both would cost a macOS permission dialog, and the menu
+  row says the same thing for free.
 - 🔊 **Optional sounds** — off by default; the 🔕/🔔 toggle at the bottom of
   the dropdown enables a distinct system sound per state change (permission →
   Submarine, waiting → Glass, ready → Purr — fixed on purpose, so every
@@ -116,31 +117,34 @@ github:triffer/claudebar uninstall`).
 ## Staying up to date
 
 The last row of the dropdown is the version you are running — click it for the
-release notes, ⌥-click it to check for a newer one right now.
+releases page, ⌥-click it to check for a newer one right now.
 
-Once a day the board asks GitHub for the newest release. When one turns up you
-get a macOS notification (once per release, not once per refresh) and that row
-becomes an orange **⬆ claudebar X.Y.Z available — click to update**. Clicking
-it opens Terminal and upgrades the way you installed:
+Once a day the board asks GitHub for the newest release. When one turns up that
+row becomes an orange **⬆ claudebar X.Y.Z available — read the release notes**,
+and clicking it opens that release. Every release ends with the command that
+installs it, ready to copy:
 
-| Installed via | What the update button runs                          |
-|---------------|------------------------------------------------------|
-| a clone       | `git pull --ff-only` in that checkout, then its `install.sh` |
-| `npx`         | `npx -y github:triffer/claudebar install`             |
+```bash
+npx github:triffer/claudebar#v1.3.0 install
+```
 
-Terminal, not a silent background job, on purpose: a `git pull` can stop on a
-dirty tree, and an upgrade that fails behind a menu is worse than no button.
-If the checkout it was installed from has since moved or gone, the button
-falls back to the `npx` route rather than erroring.
+Underneath sits **↳ you have vX.Y.Z · copy the update command**, which puts the
+same line on your clipboard — tailored to how you installed, so a clone gets
+`cd "<your checkout>" && git pull && ./install.sh` instead.
+
+**claudebar never updates itself, and never asks macOS for anything to tell you
+about a release.** Both of those cost a system permission dialog: upgrading
+from the menu means driving Terminal over Apple Events, and announcing a
+release means notification permission. A status bar plugin that opens a
+permission dialog to talk about *itself* has its priorities backwards, so the
+menu row says it where you were already looking, and you run the command where
+you can see it. The only thing that reaches the network is one `curl` a day,
+and `UPDATE_CHECK_HOURS=0` stops even that (the ⌥-click still works).
 
 The version lives in `installed.sh`, which the installer generates inside
 `~/.claude/hooks/claudebar-lib/` — nothing on the installed side sits next to a
 `package.json`, and semantic-release owns the number there. `claudebar version`
 prints both what a package would install and what is currently installed.
-
-Both halves are yours to switch off: `UPDATE_CHECK_HOURS=0` stops the network
-check entirely (the ⌥-click still works), `UPDATE_NOTIFY=0` keeps the news in
-the menu. Nothing is ever installed without you clicking it.
 
 ## Sandboxes
 
@@ -191,7 +195,6 @@ commits appear there only after `git fetch sandbox-<name>`.
 | `BAR_STYLE`          | `detailed`    | `detailed` = per-state counts in the bar; `minimal` = single ✳ |
 | `BAR_SHOW_WORKING`   | `1`           | Show the 🔵 working count in the detailed bar      |
 | `UPDATE_CHECK_HOURS` | `24`          | How often to ask GitHub for a newer release; `0` = never |
-| `UPDATE_NOTIFY`      | `1`           | Post one macOS notification per new release        |
 
 The file is plain bash, sourced by the menu bar plugin.
 
@@ -228,6 +231,12 @@ messages, decides the next version, tags it (`vX.Y.Z`), updates `CHANGELOG.md`,
 and creates a GitHub Release. There's no npm-registry publish — the tool is
 distributed straight from this repo (`npx github:triffer/claudebar`), so the
 git tag *is* the release artifact and `#semver:` ranges resolve against it.
+
+Every release's notes end with the command that installs that exact version
+(`npx github:triffer/claudebar#vX.Y.Z install`), appended by
+`@semantic-release/exec` in `.releaserc.json`. That line is what the menu bar
+points people at, so it has to be on every release, not just the ones somebody
+remembered to write it into.
 
 Because the version is derived from commits, **commit messages must follow
 [Conventional Commits](https://www.conventionalcommits.org/)**:
@@ -299,7 +308,7 @@ rather than re-deriving paths or re-describing the record:
 | `host/claudebar.3s.sh`              | The SwiftBar plugin: records → menu bar. |
 | `host/claude-signal-watcher.sh`     | Applies records a sandbox left on the bridge. |
 | `host/claudebar-focus.sh`           | The click action behind a session row. |
-| `host/claudebar-update.sh`          | The click action behind the version row: upgrade in place, or `--check` for a newer release. |
+| `host/claudebar-update.sh`          | The version row's two actions: `--check` asks GitHub now, `--copy` puts the update command on the clipboard. It installs nothing. |
 
 The library lives **inside** `hooks/` on purpose: `sbx-kit/spec.yaml` symlinks
 exactly that one directory into a sandbox, so the library rides along with the

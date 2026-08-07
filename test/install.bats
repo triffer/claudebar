@@ -72,7 +72,7 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
   bash -n "$CONF"
 
   for key in IDE_CMD TERMINAL_BUNDLE_ID STALE_HOURS BAR_STYLE BAR_SHOW_WORKING \
-             UPDATE_CHECK_HOURS UPDATE_NOTIFY; do
+             UPDATE_CHECK_HOURS; do
     grep -q "^$key=" "$CONF"
   done
   ( . "$CONF"; [ "$BAR_STYLE" = "detailed" ] && [ "$STALE_HOURS" = "1" ] )

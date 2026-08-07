@@ -259,10 +259,6 @@ conf_def UPDATE_CHECK_HOURS '24' \
 'How often the menu bar asks GitHub whether a newer claudebar was released.
 0 turns the check off; ⌥-clicking the version row still checks on demand.'
 
-conf_def UPDATE_NOTIFY '1' \
-'Post a macOS notification the first time a new version is seen (0 = off).
-At most one per release — the menu keeps showing it either way.'
-
 conf_block() { # $1: index — comment lines followed by the assignment
   local line
   while IFS= read -r line; do printf '# %s\n' "$line"; done <<<"${CONF_COMMENTS[$1]}"

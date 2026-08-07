@@ -4,6 +4,12 @@
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     [
+      "@semantic-release/exec",
+      {
+        "generateNotesCmd": "printf '### Update\\n\\n```bash\\nnpx github:triffer/claudebar#v%s install\\n```\\n' '${nextRelease.version}'"
+      }
+    ],
+    [
       "@semantic-release/changelog",
       {
         "changelogFile": "CHANGELOG.md"
