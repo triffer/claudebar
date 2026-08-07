@@ -82,28 +82,40 @@ claudebar_release_url() { # $1: version, or empty for the release list
   fi
 }
 
+# The line that upgrades THIS install, for the clipboard. claudebar never
+# installs itself — it hands you the command and you run it where you can see
+# it. A checkout pulls; anything else re-runs npx pinned at the release, which
+# is the same line the release notes carry.
+claudebar_update_command() { # $1: version to move to
+  if [ "${CLAUDEBAR_INSTALL_METHOD:-}" = "git" ] && [ -d "${CLAUDEBAR_INSTALL_SOURCE:-}/.git" ]; then
+    printf 'cd "%s" && git pull && ./install.sh' "$CLAUDEBAR_INSTALL_SOURCE"
+  elif claudebar_version_sane "${1:-}"; then
+    printf 'npx github:%s#v%s install' "$CLAUDEBAR_REPO" "$1"
+  else
+    printf 'npx github:%s install' "$CLAUDEBAR_REPO"
+  fi
+}
+
 # ------------------------------------------------------------- update cache
-# Everything the board knows about upstream: the newest release seen, when we
-# last asked, and which version the user has already been told about. Missing,
-# unreadable or corrupt all read back as "never checked".
-claudebar_update_cache_read() { # sets CLAUDEBAR_LATEST CLAUDEBAR_CHECKED CLAUDEBAR_NOTIFIED
-  CLAUDEBAR_LATEST=""; CLAUDEBAR_CHECKED=0; CLAUDEBAR_NOTIFIED=""
+# Everything the board knows about upstream: the newest release seen and when
+# we last asked. Missing, unreadable or corrupt all read back as "never
+# checked".
+claudebar_update_cache_read() { # sets CLAUDEBAR_LATEST CLAUDEBAR_CHECKED
+  CLAUDEBAR_LATEST=""; CLAUDEBAR_CHECKED=0
   [ -r "${CLAUDEBAR_UPDATE_CACHE:-}" ] || return 0
   eval "$(jq -r '@sh "CLAUDEBAR_LATEST=\(.latest // "")
-    CLAUDEBAR_CHECKED=\(.checked // 0)
-    CLAUDEBAR_NOTIFIED=\(.notified // "")"' "$CLAUDEBAR_UPDATE_CACHE" 2>/dev/null)"
+    CLAUDEBAR_CHECKED=\(.checked // 0)"' "$CLAUDEBAR_UPDATE_CACHE" 2>/dev/null)"
   claudebar_version_sane "$CLAUDEBAR_LATEST" || CLAUDEBAR_LATEST=""
   case "$CLAUDEBAR_CHECKED" in ''|*[!0-9]*) CLAUDEBAR_CHECKED=0 ;; esac
   return 0
 }
 
-claudebar_update_cache_write() { # $1: latest  $2: checked  $3: notified
+claudebar_update_cache_write() { # $1: latest  $2: checked
   local checked="${2:-0}" tmp
   case "$checked" in ''|*[!0-9]*) checked=0 ;; esac   # --argjson aborts on junk
   tmp="${CLAUDEBAR_UPDATE_CACHE}.tmp"
   mkdir -p "$(dirname "$CLAUDEBAR_UPDATE_CACHE")" 2>/dev/null
-  jq -n --arg l "${1:-}" --argjson c "$checked" --arg n "${3:-}" \
-    '{latest: $l, checked: $c, notified: $n}' > "$tmp" 2>/dev/null &&
+  jq -n --arg l "${1:-}" --argjson c "$checked" '{latest: $l, checked: $c}' > "$tmp" 2>/dev/null &&
     mv "$tmp" "$CLAUDEBAR_UPDATE_CACHE"
 }
 
@@ -118,11 +130,7 @@ claudebar_update_fetch() { # $1: unix time
     "https://api.github.com/repos/$CLAUDEBAR_REPO/releases/latest" 2>/dev/null) || return 1
   tag=$(jq -r '.tag_name // ""' <<<"$body" 2>/dev/null)
   claudebar_version_sane "${tag#v}" || return 1
-
-  # Re-read first: the caller stamped the cache before spawning us, and a
-  # notification already sent must not be sent again.
-  claudebar_update_cache_read
-  claudebar_update_cache_write "${tag#v}" "$now" "$CLAUDEBAR_NOTIFIED"
+  claudebar_update_cache_write "${tag#v}" "$now"
 }
 
 # True when the cached release beats what is installed. Both halves have to be

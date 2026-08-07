@@ -1,5 +1,8 @@
 #!/usr/bin/env bats
-# Knowing which version is installed, noticing a newer one, and installing it.
+# Knowing which version is installed, and noticing when a newer one is out.
+# claudebar never installs itself, and several tests below exist to keep it
+# that way: an upgrade from the menu costs an Apple Events permission dialog,
+# an announcement costs a notification one.
 #
 # Every test here runs with curl stubbed — a suite that asks GitHub about
 # releases would be both slow and, on a rate-limited runner, flaky.
@@ -63,7 +66,7 @@ teardown() { claudebar_teardown; }
 
 @test "an unreachable GitHub leaves the last answer standing" {
   load_lib
-  put_update_cache 1.4.0 1000 ""
+  put_update_cache 1.4.0 1000
   stub_reply curl 7 </dev/null
 
   run claudebar_update_fetch 2000
@@ -74,7 +77,7 @@ teardown() { claudebar_teardown; }
 
 @test "a garbled release name is not recorded" {
   load_lib
-  put_update_cache 1.4.0 1000 ""
+  put_update_cache 1.4.0 1000
   stub_reply curl <<<'{"tag_name": "nightly-2024-01-01"}'
 
   run claudebar_update_fetch 2000
@@ -111,38 +114,63 @@ teardown() { claudebar_teardown; }
   [[ "$output" == *"claudebar v"* ]]
 }
 
-@test "a newer release turns the version row into an update action" {
+@test "a newer release links to its release notes" {
   stamp_version 1.0.0
-  install -m 0755 "$UPDATE" "$CLAUDE_NOTIFY_HOME/claudebar-update.sh"
-  put_update_cache 2.0.0 "$(date +%s)" 2.0.0
+  install_helper
+  put_update_cache 2.0.0 "$(date +%s)"
 
   run bash "$BOARD"
 
-  [[ "$output" == *"⬆ claudebar 2.0.0 available — click to update"* ]]
-  [[ "$output" == *"$CLAUDE_NOTIFY_HOME/claudebar-update.sh"* ]]
-  [[ "$output" == *"you have v1.0.0"* ]]
+  # the click leaves claudebar entirely — the release page carries the command
+  [[ "$output" == *"⬆ claudebar 2.0.0 available"* ]]
+  [[ "$output" == *"href=https://github.com/triffer/claudebar/releases/tag/v2.0.0"* ]]
+  [[ "$output" == *"you have v1.0.0 · copy the update command"* ]]
+}
+
+@test "no menu row ever runs an upgrade" {
+  stamp_version 1.0.0
+  install_helper
+  put_update_cache 2.0.0 "$(date +%s)"
+
+  run bash "$BOARD"
+
+  # opening Terminal from a plugin costs an Apple Events permission dialog,
+  # which is what this whole section is arranged to avoid
+  [[ "$output" != *"terminal=true"* ]]
+}
+
+@test "the board never posts a notification" {
+  stamp_version 1.0.0
+  install_helper
+  put_update_cache 2.0.0 "$(date +%s)"
+
+  run bash "$BOARD"
+
+  # announcing a release asked for notification permission; the row above says
+  # the same thing where the user was already looking
+  refute_called osascript
 }
 
 @test "an older release on GitHub is not offered as an update" {
   stamp_version 2.0.0
-  install -m 0755 "$UPDATE" "$CLAUDE_NOTIFY_HOME/claudebar-update.sh"
-  put_update_cache 1.0.0 "$(date +%s)" ""
+  install_helper
+  put_update_cache 1.0.0 "$(date +%s)"
 
   run bash "$BOARD"
 
-  [[ "$output" != *"click to update"* ]]
+  [[ "$output" != *"available"* ]]
   [[ "$output" == *"claudebar v2.0.0"* ]]
 }
 
-@test "without the update action installed the version row only links out" {
+@test "without the helper installed the update row still links out" {
   stamp_version 1.0.0
-  put_update_cache 2.0.0 "$(date +%s)" 2.0.0
+  put_update_cache 2.0.0 "$(date +%s)"
 
   run bash "$BOARD"
 
-  # nothing to click when there is no installed updater to run
-  [[ "$output" != *"click to update"* ]]
-  [[ "$output" == *"href=https://github.com/triffer/claudebar/releases"* ]]
+  # the link needs nothing installed; only the clipboard action does
+  [[ "$output" == *"⬆ claudebar 2.0.0 available"* ]]
+  [[ "$output" != *"copy the update command"* ]]
 }
 
 # --------------------------------------------------- how often it checks
@@ -160,7 +188,7 @@ teardown() { claudebar_teardown; }
 
 @test "a check that just ran is not repeated" {
   stamp_version 1.0.0
-  put_update_cache 1.0.0 "$(date +%s)" ""
+  put_update_cache 1.0.0 "$(date +%s)"
 
   UPDATE_CHECK_HOURS=24 run bash "$BOARD"
 
@@ -176,103 +204,63 @@ teardown() { claudebar_teardown; }
   [ ! -f "$CLAUDE_NOTIFY_HOME/claudebar-update.json" ]
 }
 
-# ------------------------------------------------------------- announcing it
+# ------------------------------------------------------ the update helper
+# It has two jobs and neither of them installs anything.
 
-@test "a new release is announced once" {
-  stamp_version 1.0.0
-  put_update_cache 2.0.0 "$(date +%s)" ""
-
-  run bash "$BOARD"
-
-  assert_called_with osascript "display notification.*2\.0\.0"
-  [ "$(update_cache_field notified)" = "2.0.0" ]
-}
-
-@test "a release already announced stays quiet" {
-  stamp_version 1.0.0
-  put_update_cache 2.0.0 "$(date +%s)" 2.0.0
-
-  run bash "$BOARD"
-
-  refute_called osascript
-}
-
-@test "UPDATE_NOTIFY=0 keeps the update to the menu" {
-  stamp_version 1.0.0
-  install -m 0755 "$UPDATE" "$CLAUDE_NOTIFY_HOME/claudebar-update.sh"
-  put_update_cache 2.0.0 "$(date +%s)" ""
-
-  UPDATE_NOTIFY=0 run bash "$BOARD"
-
-  refute_called osascript
-  [[ "$output" == *"click to update"* ]]
-}
-
-# ------------------------------------------------------------- updating
-
-@test "the update action pulls the checkout it was installed from" {
-  local upstream="$TEST_ROOT/upstream" src="$TEST_ROOT/src"
-  git_repo "$upstream" 'printf "installed\n" > "$CLAUDE_NOTIFY_HOME/marker"'
-  git clone -q "$upstream" "$src"
-  git_commit "$upstream" 'printf "installed by the new version\n" > "$CLAUDE_NOTIFY_HOME/marker"'
-  stamp_version 1.0.0 git "$src"
-
-  run bash "$UPDATE"
-
-  [ "$status" -eq 0 ]
-  [ "$(cat "$CLAUDE_NOTIFY_HOME/marker")" = "installed by the new version" ]
-}
-
-@test "a pull that would not fast-forward stops before installing anything" {
-  local upstream="$TEST_ROOT/upstream" src="$TEST_ROOT/src"
-  git_repo "$upstream" 'true'
-  git clone -q "$upstream" "$src"
-  # only the pulled installer leaves the marker, so its absence says the
-  # upgrade stopped rather than running the checkout's own stale copy
-  git_commit "$upstream" 'printf "pulled\n" > "$CLAUDE_NOTIFY_HOME/marker"'
-  git_commit "$src" 'printf "a local edit nobody pushed\n" > /dev/null'
-  stamp_version 1.0.0 git "$src"
-
-  run bash "$UPDATE"
-
-  [ "$status" -ne 0 ]
-  [ ! -f "$CLAUDE_NOTIFY_HOME/marker" ]
-}
-
-@test "a checkout that is gone falls back to the npx installer" {
-  stamp_version 1.0.0 git "$TEST_ROOT/moved-away"
-
-  run bash "$UPDATE"
-
-  [ "$status" -eq 0 ]
-  assert_called_with npx "github:triffer/claudebar install"
-}
-
-@test "an npx install updates through npx" {
-  stamp_version 1.0.0 npx ""
-
-  run bash "$UPDATE"
-
-  [ "$status" -eq 0 ]
-  assert_called_with npx "github:triffer/claudebar install"
-}
-
-@test "a successful update drops the cache so the menu bar re-reads it" {
-  put_update_cache 2.0.0 "$(date +%s)" 2.0.0
-  stamp_version 1.0.0 npx ""
-
-  run bash "$UPDATE"
-
-  [ ! -f "$CLAUDE_NOTIFY_HOME/claudebar-update.json" ]
-  assert_called_with open "swiftbar://refreshallplugins"
-}
-
-@test "--check refreshes the cache without installing anything" {
+@test "--check refreshes the cache and repaints the bar" {
   stamp_version 1.0.0 npx ""
   stub_reply curl <<<'{"tag_name": "v9.9.9"}'
 
   run bash "$UPDATE" --check
 
   [ "$(update_cache_field latest)" = "9.9.9" ]
+  assert_called_with open "swiftbar://refreshallplugins"
+}
+
+@test "--copy puts the pinned npx command on the clipboard" {
+  stamp_version 1.0.0 npx ""
+  put_update_cache 2.0.0 "$(date +%s)"
+
+  run bash "$UPDATE" --copy
+
+  [ "$(clipboard)" = "npx github:triffer/claudebar#v2.0.0 install" ]
+}
+
+@test "--copy tells a checkout to pull instead" {
+  local src="$TEST_ROOT/my checkout"
+  git_repo "$src" 'true'
+  stamp_version 1.0.0 git "$src"
+  put_update_cache 2.0.0 "$(date +%s)"
+
+  run bash "$UPDATE" --copy
+
+  # quoted, because the path is the user's and may hold spaces
+  [ "$(clipboard)" = "cd \"$src\" && git pull && ./install.sh" ]
+}
+
+@test "--copy falls back to npx when the checkout is gone" {
+  stamp_version 1.0.0 git "$TEST_ROOT/moved-away"
+  put_update_cache 2.0.0 "$(date +%s)"
+
+  run bash "$UPDATE" --copy
+
+  [ "$(clipboard)" = "npx github:triffer/claudebar#v2.0.0 install" ]
+}
+
+@test "neither mode installs anything" {
+  stamp_version 1.0.0 git "$TEST_ROOT/moved-away"
+  put_update_cache 2.0.0 "$(date +%s)"
+
+  bash "$UPDATE" --copy; bash "$UPDATE" --check
+
   refute_called npx
+  refute_called osascript
+}
+
+@test "an unknown argument is refused rather than guessed at" {
+  stamp_version 1.0.0 npx ""
+
+  run bash "$UPDATE" --upgrade-everything
+
+  [ "$status" -eq 2 ]
 }

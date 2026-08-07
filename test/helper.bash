@@ -21,7 +21,7 @@ UPDATE="$REPO_ROOT/host/claudebar-update.sh"
 # Commands that would otherwise reach the real machine — or, for curl and npx,
 # the real network. Each one records its arguments so a test can assert it was
 # never called with anything real.
-CLAUDEBAR_STUBBED_COMMANDS=(defaults open launchctl afplay osascript brew curl npx)
+CLAUDEBAR_STUBBED_COMMANDS=(defaults open launchctl afplay osascript brew curl npx pbcopy)
 
 claudebar_setup() {
   TEST_ROOT="$(mktemp -d)"
@@ -67,8 +67,16 @@ claudebar_install_stubs() {
   # install.sh refuses to run anywhere but macOS
   printf '#!/bin/sh\necho Darwin\n' > "$bin/uname"
   chmod +x "$bin/uname"
+  # pbcopy is the one stub whose stdin is the interesting part
+  { printf '#!/bin/sh\n'
+    printf 'printf "pbcopy %%s\\n" "$*" >> "%s"\n' "$STUB_CALLS"
+    printf 'cat > "%s/clipboard"\n' "$TEST_ROOT"
+  } > "$bin/pbcopy"
+  chmod +x "$bin/pbcopy"
   export PATH="$bin:$PATH"
 }
+
+clipboard() { cat "$TEST_ROOT/clipboard"; }
 
 # Refuse to run at all unless everything points into the throwaway tree. A bug
 # in this file must not be able to reach the developer's machine quietly.
@@ -129,10 +137,15 @@ stamp_version() { # $1: version  $2: install method  $3: install source
   } > "$CLAUDEBAR_LIB/installed.sh"
 }
 
+# Put the update helper where the board looks for it — the clipboard action
+# only appears when it is actually installed.
+install_helper() {
+  install -m 0755 "$UPDATE" "$CLAUDE_NOTIFY_HOME/claudebar-update.sh"
+}
+
 # Seed what the last update check found.
-put_update_cache() { # $1: latest  $2: checked (unix time)  $3: notified
-  jq -n --arg l "$1" --argjson c "${2:-0}" --arg n "${3:-}" \
-    '{latest: $l, checked: $c, notified: $n}' \
+put_update_cache() { # $1: latest  $2: checked (unix time)
+  jq -n --arg l "$1" --argjson c "${2:-0}" '{latest: $l, checked: $c}' \
     > "$CLAUDE_NOTIFY_HOME/claudebar-update.json"
 }
 
