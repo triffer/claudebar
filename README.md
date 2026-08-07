@@ -8,11 +8,19 @@ Running several Claude sessions in parallel means losing track of which one
 needs you. This board fixes that — no popups, no context switching: the menu
 bar is the whole interface.
 
+![The claudebar menu bar item among other status items, reading a count per session state](assets/bar.png)
+
+*At rest it is one status item among the others: a `✳` and a count per state —
+permission, waiting, ready, working, left to right, zero counts hidden.*
+
 ![The claudebar dropdown showing host and sandbox sessions across all four states](assets/board.png)
 
-*Nine sessions across host and sandbox, grouped by state — the menu bar itself
-reads `✳ 🔴2 🟠2 🟢2 🔵3`. Reproduce this board for a screenshot with
-[`examples/demo-board.sh`](assets/demo-board.sh).*
+*Open it and every session is a row: state, repo `@` branch, how long it has
+sat there, and — underneath — what the session is about. That subtitle is the
+session's `/resume` title, or the last thing you asked for (`❯`) until Claude
+Code has written one. Sandbox sessions lead with 📦 and their box name; red
+rows spell out the command awaiting your approval. Seed this board yourself
+with [`examples/demo-board.sh`](examples/demo-board.sh).*
 
 ## Features
 
@@ -26,10 +34,14 @@ reads `✳ 🔴2 🟠2 🟢2 🔵3`. Reproduce this board for a screenshot with
   (`wants Bash`), and the full pending command (`↳ wants: Bash: git push
   origin main`) sits right under it. Decide whether it's rubber-stamp or
   worth switching, without leaving what you're doing.
-- 🏷️ **Sessions show what you asked for** — the last prompt you gave a
-  session sits right under its row (`↳ ❯ now also run the integration
-  tests`), so parallel sessions on the same repo stay tellable-apart.
-  Harness-injected pseudo-prompts (task notifications) are filtered out.
+- 🏷️ **Sessions show what they're about** — every row carries a subtitle
+  saying what the session *is*: its `/resume` title (`↳ Wire dry-run through
+  the deploy script`), lifted straight out of the transcript Claude Code
+  writes. Until one exists the last prompt you gave the session stands in
+  (`↳ ❯ now also run the integration tests`) — the `❯` tells you which you're
+  looking at. Either way parallel sessions on the same repo stay
+  tellable-apart. Harness-injected pseudo-prompts (task notifications) are
+  filtered out.
 - 🖱️ **One-click focus** — clicking a session row focuses its IntelliJ
   project window via the JetBrains launcher (any of `idea`/`goland`/
   `pycharm`; terminal app as fallback). **⌥-click dismisses** a stale entry.
@@ -234,3 +246,39 @@ into a per-session context file, which is how permission rows can say what
 Claude wants to run. `UserPromptSubmit` stores your prompt in the same context
 file so every status record carries it. Repeated tool calls are deduped down
 to a context-file update (no record churn).
+
+### Session titles
+
+Every hook payload carries a `transcript_path` pointing at the JSONL Claude
+Code streams the conversation to, and Claude Code drops title records into it —
+the strings its `/resume` picker lists. The hook picks the newest one out of
+that file and parks it in the context file, where it becomes the row's
+subtitle. No title yet just means the row shows your last prompt instead.
+
+Two spellings are accepted, because the record changed shape between versions:
+
+| Claude Code | record                                |
+|-------------|---------------------------------------|
+| 2.1.x       | `{"type": "ai-title", "aiTitle": …}`  |
+| older       | `{"type": "summary", "summary": …}`   |
+
+Three properties this leans on, because the transcript format is Claude Code
+internal and gets no compatibility promise:
+
+- **Scans that back off.** `SessionStart` always scans — it happens once per
+  session and it's what makes a resumed session show its inherited title
+  right away. After that only `UserPromptSubmit` and `Stop` scan: while the
+  session has no title they scan every time, since Claude Code writes the
+  first one within the opening exchanges and a fresh row shouldn't sit on a
+  bare prompt waiting for a timer. Once a title exists they drop to once every
+  10 minutes — a long session would otherwise re-read a big transcript every
+  turn to re-find a string that hasn't moved. Set
+  `CLAUDE_NOTIFY_SUMMARY_TTL=<seconds>` to tighten or loosen that.
+- **Bounded reads.** Only a 200-line head and a 500-line tail are ever
+  scanned, and `tail` seeks from the end — a 100 MB+ transcript costs ~30 ms.
+  The plugin never opens a transcript at all; its 3 s refresh only reads the
+  status records, so transcript size cannot slow the menu down.
+- **Fail-silent parsing.** Malformed, truncated or reshaped records are
+  dropped rather than raised — a scan that finds nothing leaves the previous
+  title in place. If the format ever changes, rows quietly fall back to the
+  last prompt instead of the hook breaking your session.

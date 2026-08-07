@@ -43,6 +43,10 @@ age_str() {
   fi
 }
 
+ellipsis() { # $1: text, $2: max length
+  if [ "${#1}" -gt "$2" ]; then printf '%s…' "${1:0:$(( $2 - 1 ))}"; else printf '%s' "$1"; fi
+}
+
 n_permission=0; n_waiting=0; n_ready=0; n_working=0
 blocks_permission=(); blocks_waiting=(); blocks_ready=(); blocks_working=()
 states_now=""
@@ -57,6 +61,7 @@ for f in "$SESSIONS_DIR"/*.json; do
     message=\(.message // "")
     prompt=\(.prompt // "")
     pending=\(.pending // "")
+    summary=\(.summary // "")
     cwd=\(.cwd // "")
     root=\(.root // "")
     ts=\(.ts // 0)"' < "$f" 2>/dev/null)" || continue
@@ -69,6 +74,7 @@ for f in "$SESSIONS_DIR"/*.json; do
   message=${message//|/¦}; message=${message//$'\n'/ }
   prompt=${prompt//|/¦};   prompt=${prompt//$'\n'/ }
   pending=${pending//|/¦}; pending=${pending//$'\n'/ }
+  summary=${summary//|/¦}; summary=${summary//$'\n'/ }
   project=${project//|/¦}; branch=${branch//|/¦}
 
   # Sandbox rows lead with the box name — with --clone boxes the repo/branch
@@ -106,11 +112,20 @@ for f in "$SESSIONS_DIR"/*.json; do
   # Details as flat, non-clickable lines right under the row. (A row that
   # carries a click action can't also be a submenu parent — macOS menus don't
   # support both, so "--" children would silently not show.)
+  #
+  # One subtitle says what the session is: its /resume title, which the hook
+  # lifts out of the transcript, or — until Claude Code has written one — the
+  # last thing you asked for. The title wins because it survives follow-ups
+  # ("yes, do that") that say nothing about the session. The ❯ marks which of
+  # the two you are looking at.
+  if [ -n "$summary" ]; then
+    block+=$'\n'"↳ $(ellipsis "$summary" 70) | size=12 disabled=true"
+  elif [ -n "$prompt" ]; then
+    block+=$'\n'"↳ ❯ $(ellipsis "$prompt" 70) | size=12 color=$GRAY disabled=true"
+  fi
   if [ "$state" = "permission" ] && [ -n "$pending" ]; then
     block+=$'\n'"↳ wants: ${pending:0:100} | size=11 color=$RED disabled=true"
   fi
-  [ -n "$prompt" ] && \
-    block+=$'\n'"↳ ❯ ${prompt:0:80} | size=11 color=$GRAY disabled=true"
 
   case "$state" in
     permission) blocks_permission+=("$block"); (( n_permission++ )) ;;
