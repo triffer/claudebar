@@ -27,10 +27,43 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
   [ -x "$CLAUDE_HOME/hooks/claude-notify.sh" ]
   [ -x "$CLAUDE_HOME/claude-signal-watcher.sh" ]
   [ -x "$CLAUDE_HOME/claudebar-focus.sh" ]
+  [ -x "$CLAUDE_HOME/claudebar-update.sh" ]
   [ -f "$LIB/paths.sh" ]
   [ -f "$LIB/record.sh" ]
   [ -f "$LIB/transcript.sh" ]
+  [ -f "$LIB/version.sh" ]
   [ -f "$CONF" ]
+}
+
+@test "the install stamps which version it put down, and how to update it" {
+  install_run
+
+  # nothing on the installed side sits next to a package.json, so this stamp is
+  # the only place the running version exists
+  ( . "$LIB/installed.sh"
+    [ "$CLAUDEBAR_VERSION" = "$(jq -r .version "$REPO_ROOT/package.json")" ]
+    [ "$CLAUDEBAR_INSTALL_METHOD" = "git" ]      # this repo is a checkout
+    [ "$CLAUDEBAR_INSTALL_SOURCE" = "$REPO_ROOT" ] )
+}
+
+@test "the stamp survives a source path made of shell syntax" {
+  # it is sourced as bash, and nobody's directory names are our business
+  local weird="$TEST_ROOT/it's \$HOME \`now\`"
+  copy_source_tree "$weird"
+
+  bash "$weird/install.sh" --no-deps
+
+  ( . "$LIB/installed.sh"
+    [ "$CLAUDEBAR_INSTALL_SOURCE" = "$weird" ] )
+}
+
+@test "an install without git history updates through npx instead" {
+  # what npx leaves behind: the files, no .git to pull
+  copy_source_tree "$TEST_ROOT/npx-cache"
+
+  bash "$TEST_ROOT/npx-cache/install.sh" --no-deps
+
+  ( . "$LIB/installed.sh"; [ "$CLAUDEBAR_INSTALL_METHOD" = "npx" ] )
 }
 
 @test "the generated config carries every key and is valid bash" {
@@ -38,7 +71,8 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
 
   bash -n "$CONF"
 
-  for key in IDE_CMD TERMINAL_BUNDLE_ID STALE_HOURS BAR_STYLE BAR_SHOW_WORKING; do
+  for key in IDE_CMD TERMINAL_BUNDLE_ID STALE_HOURS BAR_STYLE BAR_SHOW_WORKING \
+             UPDATE_CHECK_HOURS UPDATE_NOTIFY; do
     grep -q "^$key=" "$CONF"
   done
   ( . "$CONF"; [ "$BAR_STYLE" = "detailed" ] && [ "$STALE_HOURS" = "1" ] )
@@ -243,6 +277,8 @@ EOF
   [ ! -e "$CLAUDE_HOME/hooks/claude-notify.sh" ]
   [ ! -e "$LIB" ]
   [ ! -e "$CLAUDE_HOME/claude-signal-watcher.sh" ]
+  [ ! -e "$CLAUDE_HOME/claudebar-update.sh" ]
+  [ ! -e "$CLAUDE_HOME/claudebar-update.json" ]
   [ -f "$CONF" ]
   run jq -e '.hooks // {} | length == 0' "$SETTINGS"
   [ "$status" -eq 0 ]

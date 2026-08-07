@@ -19,7 +19,12 @@ CLAUDEBAR_SESSIONS_DIR="$CLAUDEBAR_HOME/notifier-sessions"
 CLAUDEBAR_CONF="$CLAUDEBAR_HOME/notify.conf"
 CLAUDEBAR_HOOK="$CLAUDEBAR_HOME/hooks/claude-notify.sh"
 CLAUDEBAR_FOCUS_CMD="$CLAUDEBAR_HOME/claudebar-focus.sh"
+CLAUDEBAR_UPDATE_CMD="$CLAUDEBAR_HOME/claudebar-update.sh"
 CLAUDEBAR_SOUNDS_FLAG="$CLAUDEBAR_HOME/notify-sounds-on"
+
+# What the last update check found. Namespaced like everything else we put in
+# ~/.claude, which is shared space. See version.sh for the shape.
+CLAUDEBAR_UPDATE_CACHE="$CLAUDEBAR_HOME/claudebar-update.json"
 
 # Host side of the signal bridge: where the watcher picks records up, and where
 # rejects are parked. A SIBLING of ~/.claude on purpose — sandboxes mount

@@ -16,10 +16,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="$REPO_ROOT/hooks/claude-notify.sh"
 BOARD="$REPO_ROOT/host/claudebar.3s.sh"
 WATCHER="$REPO_ROOT/host/claude-signal-watcher.sh"
+UPDATE="$REPO_ROOT/host/claudebar-update.sh"
 
-# Commands that would otherwise reach the real machine. Each one records its
-# arguments so a test can assert it was never called with anything real.
-CLAUDEBAR_STUBBED_COMMANDS=(defaults open launchctl afplay osascript brew)
+# Commands that would otherwise reach the real machine — or, for curl and npx,
+# the real network. Each one records its arguments so a test can assert it was
+# never called with anything real.
+CLAUDEBAR_STUBBED_COMMANDS=(defaults open launchctl afplay osascript brew curl npx)
 
 claudebar_setup() {
   TEST_ROOT="$(mktemp -d)"
@@ -34,6 +36,10 @@ claudebar_setup() {
   export CLAUDE_SIGNALS_INBOX="$TEST_ROOT/signals"
   # Never let install.sh consult the real SwiftBar preferences.
   export CLAUDEBAR_PLUGIN_DIR="$TEST_ROOT/plugins"
+  # The board checks GitHub for a newer release once a day. Off by default here
+  # so no test reaches for the network by accident; the tests that exercise the
+  # check turn it back on (and curl is stubbed regardless).
+  export UPDATE_CHECK_HOURS=0
 
   SESSIONS_DIR="$CLAUDE_NOTIFY_HOME/notifier-sessions"
   STUB_CALLS="$TEST_ROOT/stub-calls.log"
@@ -90,6 +96,72 @@ refute_called() { # $1: command name
   ! grep -q "^$1 " "$STUB_CALLS"
 }
 
+# Assert one was, with arguments matching a pattern.
+assert_called_with() { # $1: command name  $2: grep -E pattern over its arguments
+  grep -E "^$1 .*$2" "$STUB_CALLS"
+}
+
+# Give a stub a canned reply for the rest of this test. It keeps logging its
+# arguments, then prints what it was handed here.
+stub_reply() { # $1: command  $2: exit status (default 0)  stdin: its stdout
+  local cmd=$1 code=${2:-0} out="$TEST_ROOT/stub-$1.out"
+  cat > "$out"
+  { printf '#!/bin/sh\n'
+    printf 'printf "%%s %%s\\n" "%s" "$*" >> "%s"\n' "$cmd" "$STUB_CALLS"
+    printf 'cat "%s"\n' "$out"
+    printf 'exit %s\n' "$code"
+  } > "$TEST_ROOT/stub/$cmd"
+  chmod +x "$TEST_ROOT/stub/$cmd"
+}
+
+# A copy of the library carrying a version stamp, exactly as install.sh writes
+# one. Anything that renders or acts on a version must use this rather than the
+# repo's own lib: with no installed.sh, version.sh falls back to package.json
+# and points CLAUDEBAR_INSTALL_SOURCE at this very checkout — which the update
+# action would then happily `git pull`.
+stamp_version() { # $1: version  $2: install method  $3: install source
+  export CLAUDEBAR_LIB="$TEST_ROOT/lib"
+  mkdir -p "$CLAUDEBAR_LIB"
+  cp "$REPO_ROOT"/hooks/claudebar-lib/*.sh "$CLAUDEBAR_LIB/"
+  { printf 'CLAUDEBAR_VERSION="%s"\n' "$1"
+    printf 'CLAUDEBAR_INSTALL_METHOD="%s"\n' "${2:-git}"
+    printf 'CLAUDEBAR_INSTALL_SOURCE="%s"\n' "${3:-$TEST_ROOT/src}"
+  } > "$CLAUDEBAR_LIB/installed.sh"
+}
+
+# Seed what the last update check found.
+put_update_cache() { # $1: latest  $2: checked (unix time)  $3: notified
+  jq -n --arg l "$1" --argjson c "${2:-0}" --arg n "${3:-}" \
+    '{latest: $l, checked: $c, notified: $n}' \
+    > "$CLAUDE_NOTIFY_HOME/claudebar-update.json"
+}
+
+update_cache_field() { # $1: field
+  jq -r --arg f "$1" '.[$f]' "$CLAUDE_NOTIFY_HOME/claudebar-update.json"
+}
+
+# A throwaway checkout for the update action to pull, whose install.sh does
+# whatever the caller asks. HOME points into the test tree, so there is no
+# global git identity to inherit — every commit brings its own.
+git_repo() { # $1: dir  $2: body of its install.sh
+  git init -q "$1"
+  git_commit "$1" "$2"
+}
+
+# Everything install.sh needs, minus the .git that decides how updates run —
+# which is exactly the tree npx unpacks.
+copy_source_tree() { # $1: destination
+  mkdir -p "$1"
+  cp -R "$REPO_ROOT/install.sh" "$REPO_ROOT/package.json" \
+        "$REPO_ROOT/hooks" "$REPO_ROOT/host" "$1/"
+}
+
+git_commit() { # $1: repo  $2: body of its install.sh
+  printf '#!/bin/bash\n%s\n' "$2" > "$1/install.sh"
+  git -C "$1" add -A
+  git -C "$1" -c user.email=test@claudebar -c user.name=claudebar commit -qm "install.sh"
+}
+
 claudebar_teardown() {
   [ -n "${TEST_ROOT:-}" ] && rm -rf "$TEST_ROOT"
   return 0
@@ -100,6 +172,7 @@ load_lib() {
   . "$REPO_ROOT/hooks/claudebar-lib/paths.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/record.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/transcript.sh"
+  . "$REPO_ROOT/hooks/claudebar-lib/version.sh"
 }
 
 # Feed a hook event to claude-notify.sh. Args are jq-style key=value pairs.
