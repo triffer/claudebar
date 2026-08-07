@@ -1,3 +1,17 @@
+# [1.5.0](https://github.com/triffer/claudebar/compare/v1.4.0...v1.5.0) (2026-08-07)
+
+
+### Features
+
+* add switchable menu bar themes, starting with a cow theme ([66fc884](https://github.com/triffer/claudebar/commit/66fc88460ef0e59a04a7115ca8168dd128307476))
+
+
+### Update
+
+```bash
+npx github:triffer/claudebar#v1.5.0 install
+```
+
 # [1.4.0](https://github.com/triffer/claudebar/compare/v1.3.2...v1.4.0) (2026-08-07)
 
 
