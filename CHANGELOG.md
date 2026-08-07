@@ -1,3 +1,17 @@
+# [1.4.0](https://github.com/triffer/claudebar/compare/v1.3.2...v1.4.0) (2026-08-07)
+
+
+### Features
+
+* open the board with a global hotkey and give its rows a stable order ([99b4c06](https://github.com/triffer/claudebar/commit/99b4c060c309f18b16399cc0e3ac0fcec8014ff7))
+
+
+### Update
+
+```bash
+npx github:triffer/claudebar#v1.4.0 install
+```
+
 ## [1.3.2](https://github.com/triffer/claudebar/compare/v1.3.1...v1.3.2) (2026-08-07)
 
 
