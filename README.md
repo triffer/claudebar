@@ -136,7 +136,7 @@ commits appear there only after `git fetch sandbox-<name>`.
 |----------------------|---------------|----------------------------------------------------|
 | `IDE_CMD`            | auto-detected | JetBrains CLI launcher; "Focus IDE project" opens/focuses the session's project window with it |
 | `TERMINAL_BUNDLE_ID` | auto-detected | App the fallback "Focus terminal" action activates when `IDE_CMD` is empty |
-| `STALE_HOURS`        | `12`          | Menu bar hides sessions idle longer than this      |
+| `STALE_HOURS`        | `1`           | Menu bar hides sessions idle longer than this      |
 | `BAR_STYLE`          | `detailed`    | `detailed` = per-state counts in the bar; `minimal` = single ✳ |
 | `BAR_SHOW_WORKING`   | `1`           | Show the 🔵 working count in the detailed bar      |
 

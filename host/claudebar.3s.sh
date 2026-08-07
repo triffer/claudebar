@@ -21,7 +21,7 @@ SESSIONS_DIR="$CLAUDE_DIR/notifier-sessions"
 FOCUS_CMD="$CLAUDE_DIR/claudebar-focus.sh"
 CONF="$CLAUDE_DIR/notify.conf"
 [ -f "$CONF" ] && . "$CONF" 2>/dev/null
-STALE_HOURS="${STALE_HOURS:-12}"
+STALE_HOURS="${STALE_HOURS:-1}"
 
 RED="#ff453a"; ORANGE="#ff9f0a"; GREEN="#32d74b"; GRAY="#8e8e93"; DIM="#6e6e73"
 

@@ -162,7 +162,7 @@ IDE_CMD="$IDE"
 TERMINAL_BUNDLE_ID="$TB"
 
 # Menu bar: hide sessions with no update for this many hours.
-STALE_HOURS=12
+STALE_HOURS=1
 
 # Menu bar style: "detailed" = per-state counts (🔴 permission, 🟠 waiting,
 # 🟢 ready, 🔵 working, zero counts hidden); "minimal" = a single ✳ that only
