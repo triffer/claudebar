@@ -10,14 +10,38 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-CLAUDE_DIR="$HOME/.claude"
+# Same overrides the runtime library honours (hooks/claudebar-lib/paths.sh), so
+# installer and installed scripts agree on where things go — and so a test run
+# can redirect the whole install somewhere harmless.
+CLAUDE_DIR="${CLAUDE_NOTIFY_HOME:-$HOME/.claude}"
+SIGNALS_INBOX="${CLAUDE_SIGNALS_INBOX:-$HOME/.claude-signals}"
 SETTINGS="$CLAUDE_DIR/settings.json"
 CONF="$CLAUDE_DIR/notify.conf"
-HOOK_CMD='bash ~/.claude/hooks/claude-notify.sh'
+# Keep the tilde form for a normal install: settings.json is a file people sync
+# between machines, and `~` survives a different username where an absolute path
+# would not. Only a redirected CLAUDE_NOTIFY_HOME needs the literal path.
+if [ "$CLAUDE_DIR" = "$HOME/.claude" ]; then
+  HOOK_CMD='bash ~/.claude/hooks/claude-notify.sh'
+else
+  HOOK_CMD="bash $CLAUDE_DIR/hooks/claude-notify.sh"
+fi
 HOOK_EVENTS=(SessionStart UserPromptSubmit PreToolUse Notification Stop SessionEnd)
 PLIST_LABEL="com.claude.notify.watcher"
 PLIST="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
 LEGACY_PLIST="$HOME/Library/LaunchAgents/com.local.claude-watcher.plist"
+
+# Where SwiftBar loads plugins from. The lookup is a function with an override
+# because `defaults` resolves the user's home from the password database, NOT
+# from $HOME — so a test that redirects HOME still reads (and would clobber)
+# the real SwiftBar preferences. CLAUDEBAR_PLUGIN_DIR is the only way to keep
+# an install run off the real menu bar.
+swiftbar_plugin_dir() {
+  if [ -n "${CLAUDEBAR_PLUGIN_DIR+set}" ]; then
+    printf '%s' "$CLAUDEBAR_PLUGIN_DIR"
+    return 0
+  fi
+  defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true
+}
 # Entries installed by this script, plus the ones from the original draft
 # (hooks/notify.sh), are both matched so re-installs and upgrades don't stack.
 HOOK_MATCH='claude-notify\.sh|hooks/notify\.sh'
@@ -67,11 +91,17 @@ uninstall() {
   rm -f "$CLAUDE_DIR/hooks/claude-notify.sh" "$CLAUDE_DIR/claude-signal-watcher.sh" \
         "$CLAUDE_DIR/claudebar-focus.sh" \
         "$CLAUDE_DIR/claudebar-open.sh" "$CLAUDE_DIR/notify-sounds-on"   # opener: removed feature, clean up if present
+  # Only remove the library if it is ours — see the install path for why.
+  if [ -f "$CLAUDE_DIR/hooks/claudebar-lib/.claudebar" ]; then
+    rm -rf "$CLAUDE_DIR/hooks/claudebar-lib"
+  elif [ -e "$CLAUDE_DIR/hooks/claudebar-lib" ]; then
+    warn "left $CLAUDE_DIR/hooks/claudebar-lib alone — no claudebar marker in it"
+  fi
   local plugin_dir
-  plugin_dir=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
+  plugin_dir=$(swiftbar_plugin_dir)
   [ -n "$plugin_dir" ] && rm -f "$plugin_dir/claudebar.3s.sh" "$plugin_dir/claude-sessions.3s.sh"
   info "scripts and launchd agent removed"
-  warn "kept: $CONF, $CLAUDE_DIR/notifier-sessions, $HOME/.claude-signals (delete manually if unwanted)"
+  warn "kept: $CONF, $CLAUDE_DIR/notifier-sessions, $SIGNALS_INBOX (delete manually if unwanted)"
   exit 0
 }
 
@@ -91,14 +121,32 @@ ensure_jq
 # The signal bridge is a SIBLING of ~/.claude: sandboxes mount ~/.claude
 # read-only and sbx mounts keep their host path, so the writable bridge must
 # live outside of it.
-mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/notifier-sessions" "$HOME/.claude-signals"
+mkdir -p "$CLAUDE_DIR/hooks" "$CLAUDE_DIR/notifier-sessions" "$SIGNALS_INBOX"
 info "directories ready ($CLAUDE_DIR/{hooks,notifier-sessions}, ~/.claude-signals)"
 
 # 2. Scripts ------------------------------------------------------------------
 install -m 0755 "$SCRIPT_DIR/hooks/claude-notify.sh" "$CLAUDE_DIR/hooks/claude-notify.sh"
 install -m 0755 "$SCRIPT_DIR/host/claude-signal-watcher.sh" "$CLAUDE_DIR/claude-signal-watcher.sh"
 install -m 0755 "$SCRIPT_DIR/host/claudebar-focus.sh" "$CLAUDE_DIR/claudebar-focus.sh"
-info "hook, watcher and focus scripts installed"
+
+# The shared library goes INSIDE hooks/ deliberately: sbx-kit symlinks exactly
+# that one directory into a sandbox, so the library riding along is what keeps
+# the hook working there. Anywhere else it would resolve on the host and be
+# missing in the microVM.
+#
+# ~/.claude/hooks is shared space that the user and other tools also write to,
+# hence the claudebar- prefix rather than a bare lib/ — and hence the guard
+# below. We only ever delete a directory we can positively identify as our
+# own, so a name clash costs an error message instead of somebody's files.
+LIB_DST="$CLAUDE_DIR/hooks/claudebar-lib"
+if [ -e "$LIB_DST" ] && [ ! -f "$LIB_DST/.claudebar" ]; then
+  die "$LIB_DST exists and was not created by claudebar — move it aside and re-run"
+fi
+rm -rf "$LIB_DST"
+mkdir -p "$LIB_DST"
+install -m 0644 "$SCRIPT_DIR"/hooks/claudebar-lib/*.sh "$LIB_DST/"
+: > "$LIB_DST/.claudebar"   # ownership marker, read by the guard above
+info "hook, watcher, focus scripts and shared lib installed"
 
 # 3. Legacy cleanup (first draft of this setup) -------------------------------
 if [ -f "$LEGACY_PLIST" ] || [ -f "$CLAUDE_DIR/hooks/notify.sh" ]; then
@@ -106,7 +154,7 @@ if [ -f "$LEGACY_PLIST" ] || [ -f "$CLAUDE_DIR/hooks/notify.sh" ]; then
   rm -f "$LEGACY_PLIST" "$CLAUDE_DIR/notifier.sh" "$CLAUDE_DIR/hooks/notify.sh"
   info "legacy draft (com.local.claude-watcher, notify.sh) removed"
 fi
-rm -f "$HOME/.claude-signals"/ping_* 2>/dev/null || true
+rm -f "$SIGNALS_INBOX"/ping_* 2>/dev/null || true
 # Earlier versions stored status records in ~/.claude/sessions, which turned
 # out to be Claude Code's OWN session-tracking directory. Remove only our
 # records (identified by our schema); never touch Claude Code's files there.
@@ -140,49 +188,70 @@ elif [ -x "$HOME/Library/Application Support/JetBrains/Toolbox/scripts/idea" ]; 
   IDE="$HOME/Library/Application Support/JetBrains/Toolbox/scripts/idea"
 fi
 
+case "${TERM_PROGRAM:-}" in
+  iTerm.app)      TB="com.googlecode.iterm2" ;;
+  Apple_Terminal) TB="com.apple.Terminal" ;;
+  WezTerm)        TB="com.github.wez.wezterm" ;;
+  ghostty)        TB="com.mitchellh.ghostty" ;;
+  vscode)         TB="com.microsoft.VSCode" ;;
+  *)              TB="" ;;
+esac
+
+# One table, both paths. Creating the file writes every entry; upgrading an
+# existing one appends just the entries whose key is not there yet. Adding a
+# config key used to mean editing a heredoc AND writing another bespoke
+# grep-and-append block that could drift from it — now it is one conf_def.
+CONF_KEYS=(); CONF_VALUES=(); CONF_COMMENTS=()
+conf_def() { CONF_KEYS+=("$1"); CONF_VALUES+=("$2"); CONF_COMMENTS+=("$3"); }
+
+conf_def IDE_CMD "\"$IDE\"" \
+'JetBrains CLI launcher. When set, the menu bar "Focus IDE project" action
+opens/focuses the session'"'"'s project window.
+Leave empty to fall back to TERMINAL_BUNDLE_ID.'
+
+conf_def TERMINAL_BUNDLE_ID "\"$TB\"" \
+'App the "Focus terminal" action activates when IDE_CMD is empty.'
+
+conf_def STALE_HOURS '1' \
+'Menu bar: hide sessions with no update for this many hours.'
+
+conf_def BAR_STYLE '"detailed"' \
+'Menu bar style: "detailed" = per-state counts (🔴 permission, 🟠 waiting,
+🟢 ready, 🔵 working, zero counts hidden); "minimal" = a single ✳ that only
+lights up with a count when sessions need you.'
+
+conf_def BAR_SHOW_WORKING '1' \
+'Include the working-session count in the detailed bar (0 = hide).'
+
+conf_block() { # $1: index — comment lines followed by the assignment
+  local line
+  while IFS= read -r line; do printf '# %s\n' "$line"; done <<<"${CONF_COMMENTS[$1]}"
+  printf '%s=%s\n' "${CONF_KEYS[$1]}" "${CONF_VALUES[$1]}"
+}
+
 if [ ! -f "$CONF" ]; then
-  case "${TERM_PROGRAM:-}" in
-    iTerm.app)      TB="com.googlecode.iterm2" ;;
-    Apple_Terminal) TB="com.apple.Terminal" ;;
-    WezTerm)        TB="com.github.wez.wezterm" ;;
-    ghostty)        TB="com.mitchellh.ghostty" ;;
-    vscode)         TB="com.microsoft.VSCode" ;;
-    *)              TB="" ;;
-  esac
-  cat > "$CONF" <<EOF
-# Claude notifier configuration — sourced by the menu bar plugin.
-# Plain bash; edit freely.
-
-# JetBrains CLI launcher. When set, the menu bar "Focus IDE project" action
-# opens/focuses the session's project window.
-# Leave empty to fall back to TERMINAL_BUNDLE_ID.
-IDE_CMD="$IDE"
-
-# App the "Focus terminal" action activates when IDE_CMD is empty.
-TERMINAL_BUNDLE_ID="$TB"
-
-# Menu bar: hide sessions with no update for this many hours.
-STALE_HOURS=1
-
-# Menu bar style: "detailed" = per-state counts (🔴 permission, 🟠 waiting,
-# 🟢 ready, 🔵 working, zero counts hidden); "minimal" = a single ✳ that only
-# lights up with a count when sessions need you.
-BAR_STYLE="detailed"
-# Include the working-session count in the detailed bar (0 = hide).
-BAR_SHOW_WORKING=1
-EOF
+  {
+    printf '%s\n' '# Claude notifier configuration — sourced by the menu bar plugin.' \
+                  '# Plain bash; edit freely.'
+    for i in "${!CONF_KEYS[@]}"; do printf '\n'; conf_block "$i"; done
+  } > "$CONF"
   info "config created: $CONF${TB:+ (terminal: $TB)}${IDE:+ (IDE: idea)}"
 else
   # Upgrade path: append keys this version introduced, keep everything else.
-  if ! grep -q '^IDE_CMD=' "$CONF"; then
-    printf '\n# JetBrains CLI launcher: focuses the session'"'"'s project window on click.\n# Leave empty to fall back to TERMINAL_BUNDLE_ID.\nIDE_CMD="%s"\n' "$IDE" >> "$CONF"
-    info "config upgraded: IDE_CMD added${IDE:+ ($IDE)}"
+  # `added` is a string, not an array, on purpose: this script runs under
+  # `set -u` and macOS ships bash 3.2, where expanding an EMPTY array counts as
+  # an unbound variable and would abort the installer on the common no-op path.
+  added=""
+  for i in "${!CONF_KEYS[@]}"; do
+    grep -q "^${CONF_KEYS[$i]}=" "$CONF" && continue
+    { printf '\n'; conf_block "$i"; } >> "$CONF"
+    added="$added ${CONF_KEYS[$i]}"
+  done
+  if [ -n "$added" ]; then
+    info "config upgraded:$added added"
+  else
+    info "config kept: $CONF"
   fi
-  if ! grep -q '^BAR_STYLE=' "$CONF"; then
-    printf '\n# Menu bar style: "detailed" = per-state counts, "minimal" = single ✳.\nBAR_STYLE="detailed"\n# Include the working-session count in the detailed bar (0 = hide).\nBAR_SHOW_WORKING=1\n' >> "$CONF"
-    info "config upgraded: BAR_STYLE/BAR_SHOW_WORKING added"
-  fi
-  info "config kept: $CONF"
 fi
 
 # 6. launchd watcher for sandbox signals --------------------------------------
@@ -197,20 +266,20 @@ cat > "$PLIST" <<EOF
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>$HOME/.claude/claude-signal-watcher.sh</string>
+        <string>$CLAUDE_DIR/claude-signal-watcher.sh</string>
     </array>
     <key>QueueDirectories</key>
     <array>
-        <string>$HOME/.claude-signals</string>
+        <string>$SIGNALS_INBOX</string>
     </array>
     <key>ThrottleInterval</key>
     <integer>2</integer>
     <key>AbandonProcessGroup</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>$HOME/.claude/watcher.log</string>
+    <string>$CLAUDE_DIR/watcher.log</string>
     <key>StandardErrorPath</key>
-    <string>$HOME/.claude/watcher.error.log</string>
+    <string>$CLAUDE_DIR/watcher.error.log</string>
 </dict>
 </plist>
 EOF
@@ -219,12 +288,13 @@ launchctl load "$PLIST"
 info "launchd watcher loaded ($PLIST_LABEL)"
 
 # 7. Menu bar status board -----------------------------------------------------
-PLUGIN_DIR=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
+PLUGIN_DIR=$(swiftbar_plugin_dir)
 
 # Fresh machine: install SwiftBar and pick a plugin folder for the user so the
 # board comes up without SwiftBar's first-launch GUI folder picker. SwiftBar
 # honours a PluginDirectory default that is set before its first launch.
-if { [ -z "$PLUGIN_DIR" ] || [ ! -d "$PLUGIN_DIR" ]; } && [ "$AUTO_DEPS" = 1 ]; then
+if { [ -z "$PLUGIN_DIR" ] || [ ! -d "$PLUGIN_DIR" ]; } && [ "$AUTO_DEPS" = 1 ] \
+   && [ -z "${CLAUDEBAR_PLUGIN_DIR+set}" ]; then
   if [ ! -d "/Applications/SwiftBar.app" ]; then
     ensure_brew
     info "installing SwiftBar…"

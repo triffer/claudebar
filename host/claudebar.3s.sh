@@ -7,33 +7,41 @@
 # <swiftbar.hideLastUpdated>true</swiftbar.hideLastUpdated>
 # <swiftbar.hideSwiftBar>true</swiftbar.hideSwiftBar>
 #
-# Reads the session records that claude-notify.sh maintains under
-# ~/.claude/notifier-sessions and renders them as a menu bar item. Two styles
-# (BAR_STYLE in ~/.claude/notify.conf):
+# Reads the session records that claude-notify.sh maintains and renders them as
+# a menu bar item. Two styles (BAR_STYLE in ~/.claude/notify.conf):
 #   detailed (default)  per-state counts, zero counts hidden:
 #                       🔴2 🟠1 🟢3 🔵2  (permission/waiting/ready/working)
 #   minimal             a single ✳: dim when quiet, orange/red + count when
 #                       sessions need you
 
-CLAUDE_DIR="${CLAUDE_NOTIFY_HOME:-$HOME/.claude}"
-# NOT ~/.claude/sessions — that one belongs to Claude Code itself.
-SESSIONS_DIR="$CLAUDE_DIR/notifier-sessions"
-FOCUS_CMD="$CLAUDE_DIR/claudebar-focus.sh"
-CONF="$CLAUDE_DIR/notify.conf"
-[ -f "$CONF" ] && . "$CONF" 2>/dev/null
-STALE_HOURS="${STALE_HOURS:-1}"
+# ------------------------------------------------------------------ bootstrap
+# This file is installed into SwiftBar's plugin folder, away from the rest of
+# claudebar, so the library is found at its installed location. The
+# repo-relative entry is what lets the plugin run straight from a checkout.
+for _d in "${CLAUDEBAR_LIB:-}" \
+          "$(cd "$(dirname "${BASH_SOURCE[0]}")/../hooks/claudebar-lib" 2>/dev/null && pwd)" \
+          "${CLAUDE_NOTIFY_HOME:-$HOME/.claude}/hooks/claudebar-lib"; do
+  [ -n "$_d" ] && [ -r "$_d/paths.sh" ] && { CLAUDEBAR_LIB="$_d"; break; }
+done
 
 RED="#ff453a"; ORANGE="#ff9f0a"; GREEN="#32d74b"; GRAY="#8e8e93"; DIM="#6e6e73"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "✳ | color=$DIM"
-  echo "---"
-  echo "jq is required — brew install jq"
-  exit 0
-fi
+# The bar must always render something — a bare failure would leave a blank
+# menu item with no hint of what went wrong.
+bail() { printf '✳ | color=%s\n---\n%s\n' "$DIM" "$1"; exit 0; }
 
-now=$(date +%s)
+[ -r "${CLAUDEBAR_LIB:-}/paths.sh" ] || bail "claudebar lib not found — re-run: claudebar install"
+. "$CLAUDEBAR_LIB/paths.sh"
+. "$CLAUDEBAR_LIB/record.sh"
 
+command -v jq >/dev/null 2>&1 || bail "jq is required — brew install jq"
+
+claudebar_load_conf
+STALE_HOURS="${STALE_HOURS:-1}"
+BAR_STYLE="${BAR_STYLE:-detailed}"
+BAR_SHOW_WORKING="${BAR_SHOW_WORKING:-1}"
+
+# ------------------------------------------------------------------ formatting
 age_str() {
   local s=$1
   if   (( s < 60 ));    then echo "${s}s"
@@ -47,68 +55,53 @@ ellipsis() { # $1: text, $2: max length
   if [ "${#1}" -gt "$2" ]; then printf '%s…' "${1:0:$(( $2 - 1 ))}"; else printf '%s' "$1"; fi
 }
 
-n_permission=0; n_waiting=0; n_ready=0; n_working=0
-blocks_permission=(); blocks_waiting=(); blocks_ready=(); blocks_working=()
-states_now=""
+# SwiftBar treats "|" as its parameter separator, so no record value may carry
+# one into the markup. Newlines would split one row into several.
+menu_safe() { local s=${1//|/¦}; printf '%s' "${s//$'\n'/ }"; }
 
-shopt -s nullglob
-for f in "$SESSIONS_DIR"/*.json; do
-  eval "$(jq -r '@sh "state=\(.state // "")
-    session_id=\(.session_id // "")
-    project=\(.project // "?")
-    branch=\(.branch // "")
-    origin=\(.origin // "host")
-    message=\(.message // "")
-    prompt=\(.prompt // "")
-    pending=\(.pending // "")
-    summary=\(.summary // "")
-    cwd=\(.cwd // "")
-    root=\(.root // "")
-    ts=\(.ts // 0)"' < "$f" 2>/dev/null)" || continue
-  [ -n "$state" ] || continue
+# How each state presents itself: bucket icon, and the phrase the row ends on.
+state_icon() {
+  case "$1" in
+    permission) printf '🔴' ;; waiting) printf '🟠' ;;
+    ready)      printf '🟢' ;; working) printf '🔵' ;;
+    *)          printf '⚪️' ;;
+  esac
+}
 
-  age=$(( now - ts ))
-  (( age > STALE_HOURS * 3600 )) && continue
+state_verb() { # $1: state  $2: pending tool
+  case "$1" in
+    # triage from the row itself: which tool does it want to run?
+    permission) [ -n "$2" ] && printf 'wants %s' "${2%%:*}" || printf 'needs permission' ;;
+    waiting)    printf 'waiting for input' ;;
+    ready)      printf 'ready for you' ;;
+    working)    printf 'working' ;;
+    *)          printf '%s' "$1" ;;
+  esac
+}
 
-  # keep menu markup safe: SwiftBar treats "|" as the parameter separator
-  message=${message//|/¦}; message=${message//$'\n'/ }
-  prompt=${prompt//|/¦};   prompt=${prompt//$'\n'/ }
-  pending=${pending//|/¦}; pending=${pending//$'\n'/ }
-  summary=${summary//|/¦}; summary=${summary//$'\n'/ }
-  project=${project//|/¦}; branch=${branch//|/¦}
+# ------------------------------------------------------------------- one row
+# Emits the row itself, its ⌥-click variant, and the detail lines beneath it.
+render_row() { # $1: record file, plus the record fields already in scope
+  local label focus block
 
   # Sandbox rows lead with the box name — with --clone boxes the repo/branch
-  # alone rarely identifies the right session. The last prompt sits on the
-  # detail line below the row, same for host and sandbox sessions.
+  # alone rarely identifies the right session.
   if [ "$origin" != "host" ]; then
     label="📦 ${origin#sbx:} · $project${branch:+ @ $branch}"
   else
     label="$project${branch:+ @ $branch}"
   fi
 
-  case "$state" in
-    permission)
-      icon="🔴"
-      # triage from the row itself: which tool does it want to run?
-      if [ -n "$pending" ]; then verb="wants ${pending%%:*}"; else verb="needs permission"; fi
-      ;;
-    waiting)    icon="🟠"; verb="waiting for input" ;;
-    ready)      icon="🟢"; verb="ready for you" ;;
-    working)    icon="🔵"; verb="working" ;;
-    *)          icon="⚪️"; verb="$state" ;;
-  esac
-
   # One-click focus: the session row runs the focus helper, which sources the
   # conf and does proper shell quoting (IDE launcher paths contain spaces,
   # which SwiftBar's own bash= parsing cannot handle reliably).
   focus=""
-  if [ -x "$FOCUS_CMD" ]; then
-    focus="bash=$FOCUS_CMD param1=${root:--} terminal=false"
-  fi
+  [ -x "$CLAUDEBAR_FOCUS_CMD" ] && focus="bash=$CLAUDEBAR_FOCUS_CMD param1=${root:--} terminal=false"
 
-  block="$icon $label — $verb · $(age_str "$age") | size=13${focus:+ $focus}"
+  block="$(state_icon "$state") $label — $(state_verb "$state" "$pending") · $(age_str "$age") | size=13${focus:+ $focus}"
   # ⌥-click variant of the same row: dismiss the session
-  block+=$'\n'"$icon $label — dismiss | alternate=true size=13 bash=/bin/rm param1=-f param2=\"$f\" terminal=false refresh=true"
+  block+=$'\n'"$(state_icon "$state") $label — dismiss | alternate=true size=13 bash=/bin/rm param1=-f param2=\"$1\" terminal=false refresh=true"
+
   # Details as flat, non-clickable lines right under the row. (A row that
   # carries a click action can't also be a submenu parent — macOS menus don't
   # support both, so "--" children would silently not show.)
@@ -127,104 +120,129 @@ for f in "$SESSIONS_DIR"/*.json; do
     block+=$'\n'"↳ wants: ${pending:0:100} | size=11 color=$RED disabled=true"
   fi
 
-  case "$state" in
-    permission) blocks_permission+=("$block"); (( n_permission++ )) ;;
-    waiting)    blocks_waiting+=("$block");    (( n_waiting++ )) ;;
-    ready)      blocks_ready+=("$block");      (( n_ready++ )) ;;
-    *)          blocks_working+=("$block");    (( n_working++ )) ;;
-  esac
+  printf '%s' "$block"
+}
 
-  [ -n "$session_id" ] && states_now+="$session_id $state"$'\n'
-done
+# ------------------------------------------------------- collect the sessions
+n_permission=0; n_waiting=0; n_ready=0; n_working=0
+blocks_permission=(); blocks_waiting=(); blocks_ready=(); blocks_working=()
+states_now=""
 
-n_attention=$(( n_permission + n_waiting + n_ready ))
+collect_sessions() {
+  local f age now; now=$(date +%s)
+  shopt -s nullglob
+  for f in "$CLAUDEBAR_SESSIONS_DIR"/*.json; do
+    local session_id origin project branch cwd root state message prompt pending summary event ts
+    eval "$(claudebar_record_read < "$f")" || continue
+    [ -n "$state" ] || continue
+    [ -n "$project" ] || project="?"
+    case "$ts" in ''|*[!0-9]*) ts=0 ;; esac
 
-# ---- detect state changes for sounds (🔔 toggle below; deliberately hardcoded) ----
+    age=$(( now - ts ))
+    (( age > STALE_HOURS * 3600 )) && continue
+
+    message=$(menu_safe "$message"); prompt=$(menu_safe "$prompt")
+    pending=$(menu_safe "$pending"); summary=$(menu_safe "$summary")
+    project=$(menu_safe "$project"); branch=$(menu_safe "$branch")
+
+    local block; block=$(render_row "$f")
+    case "$state" in
+      permission) blocks_permission+=("$block"); (( n_permission++ )) ;;
+      waiting)    blocks_waiting+=("$block");    (( n_waiting++ )) ;;
+      ready)      blocks_ready+=("$block");      (( n_ready++ )) ;;
+      *)          blocks_working+=("$block");    (( n_working++ )) ;;
+    esac
+
+    [ -n "$session_id" ] && states_now+="$session_id $state"$'\n'
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------- sound cues
 # Played from the plugin because SwiftBar is long-lived and in the GUI
 # session — hooks and the launchd watcher get their process groups reaped,
 # which kills a backgrounded afplay before it makes a sound. Only collect the
 # sounds here; playback is deferred to the end so the bar repaints first.
-SOUNDS_FLAG="$CLAUDE_DIR/notify-sounds-on"
-STATE_CACHE="${TMPDIR:-/tmp}/claudebar-states"
 sounds_to_play=()
-if [ -f "$SOUNDS_FLAG" ] && [ -f "$STATE_CACHE" ] && command -v afplay >/dev/null 2>&1; then
-  while read -r sid st; do
-    [ -n "$sid" ] || continue
-    prev=$(grep -m1 "^$sid " "$STATE_CACHE" 2>/dev/null | cut -d' ' -f2)
-    [ "$st" = "$prev" ] && continue
-    case "$st" in
-      permission) snd="Submarine" ;;
-      waiting)    snd="Glass" ;;
-      ready)      snd="Purr" ;;
-      *)          snd="" ;;
-    esac
-    [ -n "$snd" ] && sounds_to_play+=("/System/Library/Sounds/$snd.aiff")
-  done <<<"${states_now:-}"
-fi
-# Always refresh the snapshot (also while sounds are off / on first run), so
-# enabling the toggle never triggers a burst for already-known states.
-printf '%s' "${states_now:-}" > "$STATE_CACHE"
-
-# ---- menu bar title ----
-BAR_STYLE="${BAR_STYLE:-detailed}"
-BAR_SHOW_WORKING="${BAR_SHOW_WORKING:-1}"
-
-if [ "$BAR_STYLE" = "minimal" ]; then
-  if   (( n_permission > 0 )); then echo "✳ $n_attention | color=$RED"
-  elif (( n_attention  > 0 )); then echo "✳ $n_attention | color=$ORANGE"
-  elif (( n_working    > 0 )); then echo "✳ | color=$GRAY"
-  else                              echo "✳ | color=$DIM"
+collect_sounds() {
+  local cache="${TMPDIR:-/tmp}/claudebar-states" sid st prev snd
+  if [ -f "$CLAUDEBAR_SOUNDS_FLAG" ] && [ -f "$cache" ] && command -v afplay >/dev/null 2>&1; then
+    while read -r sid st; do
+      [ -n "$sid" ] || continue
+      prev=$(grep -m1 "^$sid " "$cache" 2>/dev/null | cut -d' ' -f2)
+      [ "$st" = "$prev" ] && continue
+      case "$st" in
+        permission) snd="Submarine" ;;
+        waiting)    snd="Glass" ;;
+        ready)      snd="Purr" ;;
+        *)          snd="" ;;
+      esac
+      [ -n "$snd" ] && sounds_to_play+=("/System/Library/Sounds/$snd.aiff")
+    done <<<"${states_now:-}"
   fi
-else
+  # Always refresh the snapshot (also while sounds are off / on first run), so
+  # enabling the toggle never triggers a burst for already-known states.
+  printf '%s' "${states_now:-}" > "$cache"
+  return 0
+}
+
+# ------------------------------------------------------------ menu bar title
+render_title() {
+  local n_attention=$(( n_permission + n_waiting + n_ready ))
+  if [ "$BAR_STYLE" = "minimal" ]; then
+    if   (( n_permission > 0 )); then echo "✳ $n_attention | color=$RED"
+    elif (( n_attention  > 0 )); then echo "✳ $n_attention | color=$ORANGE"
+    elif (( n_working    > 0 )); then echo "✳ | color=$GRAY"
+    else                              echo "✳ | color=$DIM"
+    fi
+    return
+  fi
   # The leading ✳ identifies this status item as the Claude board among
   # other menu bar apps.
-  title=""
+  local title=""
   (( n_permission > 0 )) && title+="🔴${n_permission} "
   (( n_waiting    > 0 )) && title+="🟠${n_waiting} "
   (( n_ready      > 0 )) && title+="🟢${n_ready} "
   (( n_working > 0 )) && [ "$BAR_SHOW_WORKING" = "1" ] && title+="🔵${n_working} "
-  if [ -n "$title" ]; then
-    echo "✳ ${title% }"
+  if [ -n "$title" ]; then echo "✳ ${title% }"; else echo "✳ | color=$DIM"; fi
+}
+
+# ---------------------------------------------------------------- dropdown
+render_group() { # $1: heading  $2: color  rest: blocks
+  local heading=$1 color=$2 b; shift 2
+  (( $# == 0 )) && return 0
+  echo "$heading | size=10 color=$color"
+  for b in "$@"; do printf '%s\n' "$b"; done
+  echo "---"
+}
+
+render_dropdown() {
+  echo "---"
+  echo "✳ Claude Code sessions | size=11 color=$GRAY disabled=true"
+  echo "---"
+  if (( n_permission + n_waiting + n_ready + n_working == 0 )); then
+    echo "No active Claude sessions | color=$GRAY"
   else
-    echo "✳ | color=$DIM"
+    render_group "NEEDS YOU" "$ORANGE" "${blocks_permission[@]}" "${blocks_waiting[@]}"
+    render_group "READY"     "$GREEN"  "${blocks_ready[@]}"
+    render_group "WORKING"   "$GRAY"   "${blocks_working[@]}"
   fi
-fi
 
-# ---- dropdown ----
-echo "---"
-echo "✳ Claude Code sessions | size=11 color=$GRAY disabled=true"
-echo "---"
-total=$(( n_attention + n_working ))
-if (( total == 0 )); then
-  echo "No active Claude sessions | color=$GRAY"
-else
-  if (( n_permission + n_waiting > 0 )); then
-    echo "NEEDS YOU | size=10 color=$ORANGE"
-    for b in "${blocks_permission[@]}" "${blocks_waiting[@]}"; do printf '%s\n' "$b"; done
-    echo "---"
+  if [ -f "$CLAUDEBAR_SOUNDS_FLAG" ]; then
+    echo "🔔 Sounds on — click to mute | bash=/bin/rm param1=-f param2=\"$CLAUDEBAR_SOUNDS_FLAG\" terminal=false refresh=true"
+  else
+    echo "🔕 Sounds off — click to enable | bash=/usr/bin/touch param1=\"$CLAUDEBAR_SOUNDS_FLAG\" terminal=false refresh=true"
   fi
-  if (( n_ready > 0 )); then
-    echo "READY | size=10 color=$GREEN"
-    for b in "${blocks_ready[@]}"; do printf '%s\n' "$b"; done
-    echo "---"
-  fi
-  if (( n_working > 0 )); then
-    echo "WORKING | size=10 color=$GRAY"
-    for b in "${blocks_working[@]}"; do printf '%s\n' "$b"; done
-    echo "---"
-  fi
-fi
+  echo "Clear all sessions | bash=/bin/sh param1=-c param2=\"rm -f $CLAUDEBAR_SESSIONS_DIR/*.json\" terminal=false refresh=true"
+  echo "Open sessions folder | bash=/usr/bin/open param1=\"$CLAUDEBAR_SESSIONS_DIR\" terminal=false"
+}
 
-SOUNDS_FLAG="$CLAUDE_DIR/notify-sounds-on"
-if [ -f "$SOUNDS_FLAG" ]; then
-  echo "🔔 Sounds on — click to mute | bash=/bin/rm param1=-f param2=\"$SOUNDS_FLAG\" terminal=false refresh=true"
-else
-  echo "🔕 Sounds off — click to enable | bash=/usr/bin/touch param1=\"$SOUNDS_FLAG\" terminal=false refresh=true"
-fi
-echo "Clear all sessions | bash=/bin/sh param1=-c param2=\"rm -f $SESSIONS_DIR/*.json\" terminal=false refresh=true"
-echo "Open sessions folder | bash=/usr/bin/open param1=\"$SESSIONS_DIR\" terminal=false"
+# --------------------------------------------------------------------- main
+collect_sessions
+collect_sounds
+render_title
+render_dropdown
 
-# ---- play deferred sounds ----
 # Played after all output is emitted so SwiftBar repaints the bar first; the
 # brief sleep lets that paint land before the chime. Detached, stdout to
 # /dev/null so it never holds the plugin's stdout pipe open (would delay EOF).

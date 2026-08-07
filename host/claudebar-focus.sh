@@ -10,8 +10,20 @@
 #
 # Usage: claudebar-focus.sh <project-root|->
 
-CONF="${CLAUDE_NOTIFY_HOME:-$HOME/.claude}/notify.conf"
-[ -f "$CONF" ] && . "$CONF" 2>/dev/null
+for _d in "${CLAUDEBAR_LIB:-}" \
+          "$(cd "$(dirname "${BASH_SOURCE[0]}")/../hooks/claudebar-lib" 2>/dev/null && pwd)" \
+          "${CLAUDE_NOTIFY_HOME:-$HOME/.claude}/hooks/claudebar-lib"; do
+  [ -n "$_d" ] && [ -r "$_d/paths.sh" ] && { CLAUDEBAR_LIB="$_d"; break; }
+done
+if [ -r "${CLAUDEBAR_LIB:-}/paths.sh" ]; then
+  . "$CLAUDEBAR_LIB/paths.sh"
+  claudebar_load_conf
+else
+  # Focusing a window is never worth failing over: fall back to reading the
+  # conf straight from its conventional location.
+  CONF="${CLAUDE_NOTIFY_HOME:-$HOME/.claude}/notify.conf"
+  [ -f "$CONF" ] && . "$CONF" 2>/dev/null
+fi
 
 ROOT="${1:-}"
 

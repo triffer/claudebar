@@ -27,3 +27,24 @@ jobs:
       # decide the next version (feat -> minor, fix -> patch, etc.).
       - name: Validate PR commits
         run: npx commitlint --from "${{ github.event.pull_request.base.sha }}" --to "${{ github.event.pull_request.head.sha }}" --verbose
+
+  test:
+    name: Shell tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Run bats suite
+        run: npm test
+
+      - name: Check every script parses
+        run: |
+          for f in install.sh hooks/*.sh hooks/claudebar-lib/*.sh host/*.sh examples/*.sh; do
+            bash -n "$f" || exit 1
+          done
