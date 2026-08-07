@@ -49,6 +49,12 @@ with [`examples/demo-board.sh`](examples/demo-board.sh).*
   through a signal bridge and appear on the same board. Their rows lead with
   the box name (`📦 mybox · repo @ branch`) — with `--clone` boxes the branch
   alone rarely tells you which box you're looking at.
+- ⬆️ **Tells you when it's out of date** — the bottom of the dropdown always
+  names the version you're running. Once a day it asks GitHub whether there's
+  a newer release; when there is, that row turns into an orange *click to
+  update* button that runs the upgrade in a Terminal window, the same way you
+  installed it. You also get one macOS notification per release — one, not one
+  every three seconds.
 - 🔊 **Optional sounds** — off by default; the 🔕/🔔 toggle at the bottom of
   the dropdown enables a distinct system sound per state change (permission →
   Submarine, waiting → Glass, ready → Purr — fixed on purpose, so every
@@ -107,6 +113,35 @@ Restart running Claude Code sessions afterwards so the hooks load.
 Remove everything with `./claudebar/install.sh --uninstall` (or `npx
 github:triffer/claudebar uninstall`).
 
+## Staying up to date
+
+The last row of the dropdown is the version you are running — click it for the
+release notes, ⌥-click it to check for a newer one right now.
+
+Once a day the board asks GitHub for the newest release. When one turns up you
+get a macOS notification (once per release, not once per refresh) and that row
+becomes an orange **⬆ claudebar X.Y.Z available — click to update**. Clicking
+it opens Terminal and upgrades the way you installed:
+
+| Installed via | What the update button runs                          |
+|---------------|------------------------------------------------------|
+| a clone       | `git pull --ff-only` in that checkout, then its `install.sh` |
+| `npx`         | `npx -y github:triffer/claudebar install`             |
+
+Terminal, not a silent background job, on purpose: a `git pull` can stop on a
+dirty tree, and an upgrade that fails behind a menu is worse than no button.
+If the checkout it was installed from has since moved or gone, the button
+falls back to the `npx` route rather than erroring.
+
+The version lives in `installed.sh`, which the installer generates inside
+`~/.claude/hooks/claudebar-lib/` — nothing on the installed side sits next to a
+`package.json`, and semantic-release owns the number there. `claudebar version`
+prints both what a package would install and what is currently installed.
+
+Both halves are yours to switch off: `UPDATE_CHECK_HOURS=0` stops the network
+check entirely (the ⌥-click still works), `UPDATE_NOTIFY=0` keeps the news in
+the menu. Nothing is ever installed without you clicking it.
+
 ## Sandboxes
 
 Mount the signal bridge (read-write, the default) when creating a sandbox, and
@@ -155,6 +190,8 @@ commits appear there only after `git fetch sandbox-<name>`.
 | `STALE_HOURS`        | `1`           | Menu bar hides sessions idle longer than this      |
 | `BAR_STYLE`          | `detailed`    | `detailed` = per-state counts in the bar; `minimal` = single ✳ |
 | `BAR_SHOW_WORKING`   | `1`           | Show the 🔵 working count in the detailed bar      |
+| `UPDATE_CHECK_HOURS` | `24`          | How often to ask GitHub for a newer release; `0` = never |
+| `UPDATE_NOTIFY`      | `1`           | Post one macOS notification per new release        |
 
 The file is plain bash, sourced by the menu bar plugin.
 
@@ -218,7 +255,8 @@ The suite runs the real scripts — the hook, the watcher, the SwiftBar plugin
 and `install.sh` — against a throwaway `HOME`, so nothing touches your own
 sessions or `~/.claude`. `install.sh` is exercised for real (with `uname` and
 `launchctl` stubbed) because it edits your `settings.json`, which makes it the
-riskiest file in the repo. It runs on Linux CI too, which is why the hook
+riskiest file in the repo. `curl` is stubbed too, so the update check is tested
+without a suite that depends on GitHub being up and un-rate-limited. It runs on Linux CI too, which is why the hook
 accepts `CLAUDE_SIGNALS_DIR=""` to force local delivery instead of guessing
 host-vs-sandbox from `uname`.
 
@@ -256,10 +294,12 @@ rather than re-deriving paths or re-describing the record:
 | `hooks/claudebar-lib/paths.sh`      | Where things live: the store, the config, both ends of the signal bridge. The single place any of those paths is spelled out. |
 | `hooks/claudebar-lib/record.sh`     | The status record — its field list, building it, reading it back, storing it, relaying it. |
 | `hooks/claudebar-lib/transcript.sh` | Lifting a session's `/resume` title out of the transcript, and deciding when to look. |
+| `hooks/claudebar-lib/version.sh`    | Which version is installed (from the stamp `install.sh` generates beside it), comparing it against the newest release, and the cache that keeps the check off the network. |
 | `hooks/claude-notify.sh`            | The hook: hook event → state → record. |
 | `host/claudebar.3s.sh`              | The SwiftBar plugin: records → menu bar. |
 | `host/claude-signal-watcher.sh`     | Applies records a sandbox left on the bridge. |
 | `host/claudebar-focus.sh`           | The click action behind a session row. |
+| `host/claudebar-update.sh`          | The click action behind the version row: upgrade in place, or `--check` for a newer release. |
 
 The library lives **inside** `hooks/` on purpose: `sbx-kit/spec.yaml` symlinks
 exactly that one directory into a sandbox, so the library rides along with the

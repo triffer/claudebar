@@ -33,6 +33,7 @@ bail() { printf '✳ | color=%s\n---\n%s\n' "$DIM" "$1"; exit 0; }
 [ -r "${CLAUDEBAR_LIB:-}/paths.sh" ] || bail "claudebar lib not found — re-run: claudebar install"
 . "$CLAUDEBAR_LIB/paths.sh"
 . "$CLAUDEBAR_LIB/record.sh"
+. "$CLAUDEBAR_LIB/version.sh"
 
 command -v jq >/dev/null 2>&1 || bail "jq is required — brew install jq"
 
@@ -40,6 +41,9 @@ claudebar_load_conf
 STALE_HOURS="${STALE_HOURS:-1}"
 BAR_STYLE="${BAR_STYLE:-detailed}"
 BAR_SHOW_WORKING="${BAR_SHOW_WORKING:-1}"
+UPDATE_CHECK_HOURS="${UPDATE_CHECK_HOURS:-24}"
+UPDATE_NOTIFY="${UPDATE_NOTIFY:-1}"
+case "$UPDATE_CHECK_HOURS" in ''|*[!0-9]*) UPDATE_CHECK_HOURS=24 ;; esac
 
 # ------------------------------------------------------------------ formatting
 age_str() {
@@ -186,6 +190,45 @@ collect_sounds() {
   return 0
 }
 
+# ------------------------------------------------------------------ updates
+# This plugin reruns every three seconds, so the check never happens inline:
+# the board reads the cache, and at most once per UPDATE_CHECK_HOURS spawns a
+# detached fetch whose result the *next* refresh renders. Nothing here waits
+# on the network.
+check_updates() {
+  claudebar_update_cache_read
+  (( UPDATE_CHECK_HOURS == 0 )) && return 0
+  local now; now=$(date +%s)
+  (( now - CLAUDEBAR_CHECKED < UPDATE_CHECK_HOURS * 3600 )) && return 0
+
+  # Stamp the cache BEFORE fetching, not after. The next refresh is three
+  # seconds away, and a machine that is offline (or a GitHub that is rate
+  # limiting) must cost one attempt per interval — not one every refresh.
+  claudebar_update_cache_write "$CLAUDEBAR_LATEST" "$now" "$CLAUDEBAR_NOTIFIED"
+  ( claudebar_update_fetch "$now" ) >/dev/null 2>&1 &
+  return 0
+}
+
+# Say it once per release, out loud. A menu you have to open first is no use
+# for something you'd want to know about without looking — but a notification
+# that repeats every three seconds is spyware, so the cache remembers which
+# version has already been announced.
+announce_update() {
+  [ "$UPDATE_NOTIFY" = "0" ] && return 0
+  claudebar_update_available || return 0
+  [ "$CLAUDEBAR_NOTIFIED" = "$CLAUDEBAR_LATEST" ] && return 0
+  command -v osascript >/dev/null 2>&1 || return 0
+
+  # Record first: a failed osascript must not turn into a notification loop.
+  claudebar_update_cache_write "$CLAUDEBAR_LATEST" "$CLAUDEBAR_CHECKED" "$CLAUDEBAR_LATEST"
+  # Inline, unlike the sounds below — this fires at most once per release, and
+  # the version is a bare MAJOR.MINOR.PATCH (version.sh rejects anything else),
+  # so there is nothing in the string that needs escaping.
+  osascript -e "display notification \"Version $CLAUDEBAR_LATEST is available — open the ✳ menu to update\" with title \"claudebar update\"" \
+    >/dev/null 2>&1
+  return 0
+}
+
 # ------------------------------------------------------------ menu bar title
 render_title() {
   local n_attention=$(( n_permission + n_waiting + n_ready ))
@@ -235,13 +278,38 @@ render_dropdown() {
   fi
   echo "Clear all sessions | bash=/bin/sh param1=-c param2=\"rm -f $CLAUDEBAR_SESSIONS_DIR/*.json\" terminal=false refresh=true"
   echo "Open sessions folder | bash=/usr/bin/open param1=\"$CLAUDEBAR_SESSIONS_DIR\" terminal=false"
+  render_about
+}
+
+# The last section of the menu is where claudebar says what it is: which
+# version you are running, and — when there is one — the newer one, as a
+# single click that performs the upgrade. The version row doubles as the
+# manual check on ⌥-click, which is also the way to check at all when
+# UPDATE_CHECK_HOURS=0 has turned the automatic one off.
+render_about() {
+  local v="${CLAUDEBAR_VERSION:-}" updatable=0
+  claudebar_version_sane "$v" || v="dev"
+  [ -x "$CLAUDEBAR_UPDATE_CMD" ] && updatable=1
+
+  echo "---"
+  if claudebar_update_available && [ "$updatable" = 1 ]; then
+    echo "⬆ claudebar $CLAUDEBAR_LATEST available — click to update | color=$ORANGE size=13 bash=$CLAUDEBAR_UPDATE_CMD terminal=true refresh=true"
+    echo "↳ you have v$v · what's new | size=11 color=$GRAY href=$(claudebar_release_url "$CLAUDEBAR_LATEST")"
+    return 0
+  fi
+  echo "claudebar v$v | size=11 color=$GRAY href=$(claudebar_release_url)"
+  if [ "$updatable" = 1 ]; then
+    echo "claudebar v$v — check for updates now | alternate=true size=11 bash=$CLAUDEBAR_UPDATE_CMD param1=--check terminal=false refresh=true"
+  fi
 }
 
 # --------------------------------------------------------------------- main
 collect_sessions
 collect_sounds
+check_updates
 render_title
 render_dropdown
+announce_update
 
 # Played after all output is emitted so SwiftBar repaints the bar first; the
 # brief sleep lets that paint land before the chime. Detached, stdout to

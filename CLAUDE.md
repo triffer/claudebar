@@ -49,7 +49,10 @@ When adding a script that shells out to a macOS command, stub it and add it to
   `notify.conf` is user-edited bash sourced into the same shell.
 - Target **bash 3.2**: that's `/bin/bash` on macOS. No associative arrays, and
   under `set -u` never expand a possibly-empty array (`${#arr[@]}` on an empty
-  array aborts there).
+  array aborts there). Brace any expansion that touches a non-ASCII character —
+  3.2 reads the high bytes as part of the name, so `"$VERSION…"` looks up a
+  variable called `VERSION…`. `test/bash32.bats` scans for both; CI runs bash 5
+  and cannot reproduce either.
 - `~/.claude/` is shared space. Namespace anything written into it, and never
   `rm -rf` a path without first proving claudebar created it.
 - The hook must never fail a Claude session: it exits 0 no matter what.
