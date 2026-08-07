@@ -45,6 +45,11 @@ with [`examples/demo-board.sh`](examples/demo-board.sh).*
 - 🖱️ **One-click focus** — clicking a session row focuses its IntelliJ
   project window via the JetBrains launcher (any of `idea`/`goland`/
   `pycharm`; terminal app as fallback). **⌥-click dismisses** a stale entry.
+- ⌨️ **Reachable without the mouse** — set `MENU_SHORTCUT` and a global hotkey
+  opens the board; from there ↑/↓ walk the sessions and Return focuses the
+  highlighted one. Rows sort longest-waiting first within each group, so where
+  a session sits in the list is a fact about the session and not about the
+  order its file happened to land in.
 - 📦 **Sandboxes included** — sessions inside Docker sandboxes (`sbx`) report
   through a signal bridge and appear on the same board. Their rows lead with
   the box name (`📦 mybox · repo @ branch`) — with `--clone` boxes the branch
@@ -187,6 +192,7 @@ commits appear there only after `git fetch sandbox-<name>`.
 | `STALE_HOURS`        | `1`           | Menu bar hides sessions idle longer than this      |
 | `BAR_STYLE`          | `detailed`    | `detailed` = per-state counts in the bar; `minimal` = single ✳ |
 | `BAR_SHOW_WORKING`   | `1`           | Show the 🔵 working count in the detailed bar      |
+| `MENU_SHORTCUT`      | `CTRL+OPTION+CMD+C` | Global hotkey that opens the board; empty = none |
 | `UPDATE_CHECK_HOURS` | `24`          | How often to ask GitHub for a newer release; `0` = never |
 
 The file is plain bash, sourced by the menu bar plugin.
@@ -198,6 +204,22 @@ sessions alike (sbx keeps working trees at their host path in both mount and
 clone mode, so the recorded root is valid on the Mac). Works with any
 JetBrains launcher; point `IDE_CMD` at `goland`, `pycharm`, etc. if that's
 your IDE.
+
+**Keyboard navigation**: `MENU_SHORTCUT` is registered by SwiftBar as a global
+hotkey on the menu bar item itself, which is what makes it *open the board*
+rather than run some particular row's action. Everything after that is stock
+macOS menu behaviour — ↑/↓ move between rows and skip the group headings and
+`↳` detail lines (they are disabled items), Return activates the highlighted
+row, Esc closes.
+
+The default is **⌃⌥⌘C**, and three modifiers is not an accident. A global
+hotkey outranks the frontmost app's own, so a collision doesn't fail loudly —
+it silently stops that shortcut working everywhere, with nothing to point the
+blame back here. That rules out the crowded neighbourhoods: `⌘Space`/`⌥Space`
+(Spotlight, Raycast, Alfred), `⌃⌘Space` (emoji), `⌘⇧3/4/5` (screenshots), and
+plain `⌘⌥<letter>`, which is where JetBrains keeps its refactorings. Any
+combination of `CMD`, `OPTION`, `CTRL`, `SHIFT` and `FN` works; empty turns the
+hotkey off.
 
 ## Troubleshooting
 

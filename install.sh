@@ -255,6 +255,14 @@ lights up with a count when sessions need you.'
 conf_def BAR_SHOW_WORKING '1' \
 'Include the working-session count in the detailed bar (0 = hide).'
 
+conf_def MENU_SHORTCUT '"CTRL+OPTION+CMD+C"' \
+'Global hotkey that opens the board without the mouse. From there ↑/↓ walk the
+sessions and Return focuses the highlighted one. Empty = no hotkey.
+Modifiers: CMD, OPTION, CTRL, SHIFT, FN — combine as many as you like.
+Three modifiers on purpose: a global hotkey outranks the frontmost app'"'"'s own,
+so a collision silently breaks that shortcut everywhere, with nothing pointing
+back here. ⌘⌥<letter> in particular is JetBrains refactoring territory.'
+
 conf_def UPDATE_CHECK_HOURS '24' \
 'How often the menu bar asks GitHub whether a newer claudebar was released.
 0 turns the check off; ⌥-clicking the version row still checks on demand.'

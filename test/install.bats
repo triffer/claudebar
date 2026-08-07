@@ -72,10 +72,19 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
   bash -n "$CONF"
 
   for key in IDE_CMD TERMINAL_BUNDLE_ID STALE_HOURS BAR_STYLE BAR_SHOW_WORKING \
-             UPDATE_CHECK_HOURS; do
+             UPDATE_CHECK_HOURS MENU_SHORTCUT; do
     grep -q "^$key=" "$CONF"
   done
   ( . "$CONF"; [ "$BAR_STYLE" = "detailed" ] && [ "$STALE_HOURS" = "1" ] )
+}
+
+@test "the default hotkey is one the board actually renders" {
+  # the default lives only here, so nothing else would catch a typo in it
+  install_run
+
+  ( . "$CONF"; [ "$MENU_SHORTCUT" = "CTRL+OPTION+CMD+C" ] )
+  MENU_SHORTCUT=$( . "$CONF"; printf '%s' "$MENU_SHORTCUT" ) run bash "$BOARD"
+  [ "${lines[0]}" = "✳ | color=#6e6e73 shortcut=CTRL+OPTION+CMD+C" ]
 }
 
 @test "hooks are registered for every event" {
