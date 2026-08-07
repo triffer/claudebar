@@ -99,6 +99,7 @@ shows the host's state of the repo — the box's commits appear only after
 | `STALE_HOURS`        | `1`                 | Hide sessions idle longer than this                |
 | `BAR_STYLE`          | `detailed`          | `detailed` = per-state counts; `minimal` = a single ✳ that lights up only when a session needs you |
 | `BAR_SHOW_WORKING`   | `1`                 | Show the 🔵 working count in the detailed bar      |
+| `BAR_THEME`          | `default`           | State marker icons: `default`, or `cow` for 🐮/🐽/🥛 |
 | `MENU_SHORTCUT`      | `CTRL+OPTION+CMD+C` | Global hotkey that opens the board; empty = none   |
 | `UPDATE_CHECK_HOURS` | `24`                | How often to check GitHub for a release; `0` = never |
 
@@ -154,6 +155,7 @@ plain `⌘⌥<letter>`, where JetBrains keeps its refactorings.
 |-------------------------------------|----------------|
 | `hooks/claudebar-lib/paths.sh`      | Where things live: the store, the config, both ends of the signal bridge |
 | `hooks/claudebar-lib/record.sh`     | The status record: its field list, building it, reading it back, storing it, relaying it |
+| `hooks/claudebar-lib/themes.sh`     | The state marker icon sets; a new theme is one more case arm |
 | `hooks/claudebar-lib/transcript.sh` | Lifting a session's `/resume` title out of the transcript |
 | `hooks/claudebar-lib/version.sh`    | Installed version, release comparison, and the cache that keeps the check off the network |
 | `hooks/claude-notify.sh`            | The hook: hook event → state → record |
