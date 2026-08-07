@@ -132,19 +132,12 @@ Underneath sits **↳ you have vX.Y.Z · copy the update command**, which puts t
 same line on your clipboard — tailored to how you installed, so a clone gets
 `cd "<your checkout>" && git pull && ./install.sh` instead.
 
-**claudebar never updates itself, and never asks macOS for anything to tell you
-about a release.** Both of those cost a system permission dialog: upgrading
-from the menu means driving Terminal over Apple Events, and announcing a
-release means notification permission. A status bar plugin that opens a
-permission dialog to talk about *itself* has its priorities backwards, so the
-menu row says it where you were already looking, and you run the command where
-you can see it. The only thing that reaches the network is one `curl` a day,
+The only thing that reaches the network is one `curl` a day,
 and `UPDATE_CHECK_HOURS=0` stops even that (the ⌥-click still works).
 
 The version lives in `installed.sh`, which the installer generates inside
-`~/.claude/hooks/claudebar-lib/` — nothing on the installed side sits next to a
-`package.json`, and semantic-release owns the number there. `claudebar version`
-prints both what a package would install and what is currently installed.
+`~/.claude/hooks/claudebar-lib/`. `claudebar version` prints both what a 
+package would install and what is currently installed.
 
 ## Sandboxes
 
