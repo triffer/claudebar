@@ -92,7 +92,8 @@ brew install jq && brew install --cask swiftbar   # launch SwiftBar once, pick a
 
 The installer is idempotent — re-run it after pulling updates. It:
 
-- copies the hook and watcher scripts into `~/.claude/`,
+- copies the hook and watcher scripts into `~/.claude/`, plus the shared
+  library into `~/.claude/hooks/claudebar-lib/`,
 - merges the hook entries into `~/.claude/settings.json` (without duplicating
   them, and cleaning up entries from earlier versions of this setup),
 - loads a launchd agent (`com.claude.notify.watcher`) that watches
@@ -109,7 +110,8 @@ github:triffer/claudebar uninstall`).
 ## Sandboxes
 
 Mount the signal bridge (read-write, the default) when creating a sandbox, and
-add the bundled kit — it links your hooks into the sandbox and merges the hook
+add the bundled kit — it symlinks your `~/.claude/hooks/` into the sandbox (the
+hook and the `claudebar-lib/` it sources, in one link) and merges the hook
 registrations into the sandbox settings:
 
 ```bash
@@ -130,9 +132,11 @@ to be a *sibling* of `~/.claude` rather than a subdirectory — the `~/.claude`
 mount is read-only, so nothing inside it would be writable.
 
 On non-macOS the hook auto-discovers the bridge via the `/Users/*/.claude-signals`
-glob (override with `CLAUDE_SIGNALS_DIR` if your layout differs) and drops
-status records there; the launchd watcher on your Mac applies them to the
-status store within a couple of seconds.
+glob and drops status records there; the launchd watcher on your Mac applies
+them to the status store within a couple of seconds. `CLAUDE_SIGNALS_DIR`
+overrides the probe if your layout differs — and setting it to the *empty*
+string forces local delivery instead, which is how the test suite runs the hook
+on Linux CI without it guessing it's in a sandbox.
 
 **`--clone` boxes**: in clone mode the working tree is a standalone clone
 (kept at the same path as the host repo), and the hook (detecting
@@ -202,6 +206,22 @@ Every PR runs `commitlint` against its commits, so a non-conforming message is
 caught before merge. Don't bump the version in `package.json` by hand — it is
 managed by the release pipeline.
 
+### Tests
+
+```bash
+npm install
+npm test
+npx bats test/board-render.bats   # one file
+```
+
+The suite runs the real scripts — the hook, the watcher, the SwiftBar plugin
+and `install.sh` — against a throwaway `HOME`, so nothing touches your own
+sessions or `~/.claude`. `install.sh` is exercised for real (with `uname` and
+`launchctl` stubbed) because it edits your `settings.json`, which makes it the
+riskiest file in the repo. It runs on Linux CI too, which is why the hook
+accepts `CLAUDE_SIGNALS_DIR=""` to force local delivery instead of guessing
+host-vs-sandbox from `uname`.
+
 ## How it works
 
 ```
@@ -217,7 +237,7 @@ managed by the release pipeline.
         │                                                              │
         │                                              claude-signal-watcher.sh
         │                                                              │
-        └────────────► claude-notify.sh --deliver ◄────────────────────┘
+        └───────────► claudebar-lib/record.sh (the store) ◄────────────┘
                                       │
                                       ▼
                          ~/.claude/notifier-sessions/*.json
@@ -225,6 +245,49 @@ managed by the release pipeline.
                                       ▼
                     SwiftBar plugin (claudebar.3s.sh)
 ```
+
+### Repository layout
+
+Everything shared sits in `hooks/claudebar-lib/`, and every script sources it
+rather than re-deriving paths or re-describing the record:
+
+| File                                | Responsibility |
+|-------------------------------------|----------------|
+| `hooks/claudebar-lib/paths.sh`      | Where things live: the store, the config, both ends of the signal bridge. The single place any of those paths is spelled out. |
+| `hooks/claudebar-lib/record.sh`     | The status record — its field list, building it, reading it back, storing it, relaying it. |
+| `hooks/claudebar-lib/transcript.sh` | Lifting a session's `/resume` title out of the transcript, and deciding when to look. |
+| `hooks/claude-notify.sh`            | The hook: hook event → state → record. |
+| `host/claudebar.3s.sh`              | The SwiftBar plugin: records → menu bar. |
+| `host/claude-signal-watcher.sh`     | Applies records a sandbox left on the bridge. |
+| `host/claudebar-focus.sh`           | The click action behind a session row. |
+
+The library lives **inside** `hooks/` on purpose: `sbx-kit/spec.yaml` symlinks
+exactly that one directory into a sandbox, so the library rides along with the
+hook. A sibling directory would resolve on the host and be missing inside the
+microVM — a break you'd only ever see in sandboxed sessions.
+
+That makes `~/.claude/hooks/` the landing site, and it is **shared space** —
+your own hook scripts live there, and so may other tools'. Hence two rules the
+installer follows:
+
+- The directory is `claudebar-lib/`, not `lib/`. A generic name in a shared
+  folder is a collision waiting to happen.
+- Install drops a `.claudebar` marker file inside it, and neither install nor
+  uninstall will `rm -rf` that directory without finding the marker first. If
+  something else ever owns the name, you get an error telling you to move it
+  aside — never a silently deleted directory. Files elsewhere in
+  `~/.claude/hooks/` are never touched.
+
+Everything the library exports is prefixed `CLAUDEBAR_*` / `claudebar_*`, for
+the same reason at the shell level: `notify.conf` is user-edited bash sourced
+into the same shell, and the prefix is what stops a stray assignment there from
+shadowing a path.
+
+The record is the contract between the hook that writes it and the plugin that
+renders it. Both directions are generated from the one field list in
+`record.sh`, so adding a field is a single edit and the two ends cannot drift
+apart — which they previously could, silently, since a reader that misses a
+field just yields an empty string.
 
 One hook script handles six Claude Code events and tracks a state per session:
 

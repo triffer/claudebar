@@ -14,44 +14,39 @@
 
 set -euo pipefail
 
-CLAUDE_DIR="${CLAUDE_NOTIFY_HOME:-$HOME/.claude}"
-SESSIONS_DIR="$CLAUDE_DIR/notifier-sessions"
+for _d in "${CLAUDEBAR_LIB:-}" \
+          "$(cd "$(dirname "${BASH_SOURCE[0]}")/../hooks/claudebar-lib" 2>/dev/null && pwd)" \
+          "${CLAUDE_NOTIFY_HOME:-$HOME/.claude}/hooks/claudebar-lib"; do
+  [ -n "$_d" ] && [ -r "$_d/paths.sh" ] && { CLAUDEBAR_LIB="$_d"; break; }
+done
+[ -r "${CLAUDEBAR_LIB:-}/paths.sh" ] || { echo "claudebar lib not found" >&2; exit 1; }
+. "$CLAUDEBAR_LIB/paths.sh"
+. "$CLAUDEBAR_LIB/record.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "jq is required — brew install jq" >&2; exit 1; }
 
 if [ "${1:-}" = "--clear" ]; then
-  rm -f "$SESSIONS_DIR"/demo-*.json
-  echo "Removed demo sessions from $SESSIONS_DIR"
+  rm -f "$CLAUDEBAR_SESSIONS_DIR"/demo-*.json
+  echo "Removed demo sessions from $CLAUDEBAR_SESSIONS_DIR"
   exit 0
 fi
 
-mkdir -p "$SESSIONS_DIR"
+mkdir -p "$CLAUDEBAR_SESSIONS_DIR"
 now=$(date +%s)
 
 # write <id> <ago-seconds> <origin> <project> <branch> <state> <summary> <prompt> <pending>
+#
+# The record is assembled by the shared builder, so demo rows can never drift
+# out of the schema the board reads — which is what a screenshot fixture would
+# otherwise do quietly the next time a field is added.
 write() {
-  local id="$1" ago="$2" origin="$3" project="$4" branch="$5" state="$6"
+  local ago="$2"
+  local session_id="demo-$1" origin="$3" project="$4" branch="$5" state="$6"
   local summary="$7" prompt="$8" pending="$9"
   local ts=$(( now - ago ))
-  local root="$HOME/IdeaProjects/$project"
-  jq -n \
-    --arg session_id "demo-$id" \
-    --arg origin "$origin" \
-    --arg project "$project" \
-    --arg branch "$branch" \
-    --arg cwd "$root" \
-    --arg root "$root" \
-    --arg state "$state" \
-    --arg message "" \
-    --arg summary "$summary" \
-    --arg prompt "$prompt" \
-    --arg pending "$pending" \
-    --arg event "demo" \
-    --argjson ts "$ts" \
-    '{session_id:$session_id, origin:$origin, project:$project, branch:$branch,
-      cwd:$cwd, root:$root, state:$state, message:$message, summary:$summary,
-      prompt:$prompt, pending:$pending, event:$event, ts:$ts}' \
-    > "$SESSIONS_DIR/demo-$id.json"
+  local root="$HOME/IdeaProjects/$project" cwd="$HOME/IdeaProjects/$project"
+  local message="" event="demo"
+  claudebar_record_build > "$CLAUDEBAR_SESSIONS_DIR/$session_id.json"
 }
 
 # Rows show their /resume title; the ones with an empty summary fall back to
@@ -75,9 +70,9 @@ write  work-sync     6    host             mobile-app        feat/offline-sync  
 write  work-deps     12   host             payments          chore/bump-deps         working      "Dependency bump and green test suite"               "keep react on 18 for now"                       ""
 write  work-index    58   "sbx:search"     search-index      claude/reindex          working      "Reindex the catalog with the new analyzer"          "run it against staging first"                   ""
 
-n=$(ls "$SESSIONS_DIR"/demo-*.json | wc -l | tr -d ' ')
+n=$(ls "$CLAUDEBAR_SESSIONS_DIR"/demo-*.json | wc -l | tr -d ' ')
 cat <<EOF
-Seeded $n demo sessions into $SESSIONS_DIR
+Seeded $n demo sessions into $CLAUDEBAR_SESSIONS_DIR
 
 Menu bar will read:  ✳ 🔴2 🟠2 🟢2 🔵3
 
