@@ -43,6 +43,10 @@ BAR_STYLE="${BAR_STYLE:-detailed}"
 BAR_SHOW_WORKING="${BAR_SHOW_WORKING:-1}"
 UPDATE_CHECK_HOURS="${UPDATE_CHECK_HOURS:-24}"
 case "$UPDATE_CHECK_HOURS" in ''|*[!0-9]*) UPDATE_CHECK_HOURS=24 ;; esac
+# notify.conf is user-edited bash sourced into this shell, so a hotkey holding a
+# "|" would not be a broken shortcut — it would be extra SwiftBar parameters on
+# the menu bar's own title line.
+MENU_SHORTCUT=$(printf '%s' "${MENU_SHORTCUT:-}" | tr -cd 'A-Za-z0-9+' | tr 'a-z' 'A-Z')
 
 # ------------------------------------------------------------------ formatting
 age_str() {
@@ -128,8 +132,21 @@ render_row() { # $1: record file, plus the record fields already in scope
 
 # ------------------------------------------------------- collect the sessions
 n_permission=0; n_waiting=0; n_ready=0; n_working=0
-blocks_permission=(); blocks_waiting=(); blocks_ready=(); blocks_working=()
+# Every row, plus a "rank ts index" line per row that decides what order they
+# come out in. The board is walked with the arrow keys (see MENU_SHORTCUT), so a
+# row's position has to be a property of the session — the store globs in
+# session-id order, which is a UUID, so a new session used to land anywhere in
+# the list and shuffle the rest.
+rows=(); row_keys=""; row_order=""
 states_now=""
+
+# Urgency first, and within one state the session that has sat there longest.
+state_rank() {
+  case "$1" in
+    permission) printf 1 ;; waiting) printf 2 ;;
+    ready)      printf 3 ;; *)       printf 4 ;;
+  esac
+}
 
 collect_sessions() {
   local f age now; now=$(date +%s)
@@ -148,16 +165,18 @@ collect_sessions() {
     pending=$(menu_safe "$pending"); summary=$(menu_safe "$summary")
     project=$(menu_safe "$project"); branch=$(menu_safe "$branch")
 
-    local block; block=$(render_row "$f")
+    rows+=("$(render_row "$f")")
+    row_keys+="$(state_rank "$state") $ts $(( ${#rows[@]} - 1 ))"$'\n'
     case "$state" in
-      permission) blocks_permission+=("$block"); (( n_permission++ )) ;;
-      waiting)    blocks_waiting+=("$block");    (( n_waiting++ )) ;;
-      ready)      blocks_ready+=("$block");      (( n_ready++ )) ;;
-      *)          blocks_working+=("$block");    (( n_working++ )) ;;
+      permission) (( n_permission++ )) ;;
+      waiting)    (( n_waiting++ )) ;;
+      ready)      (( n_ready++ )) ;;
+      *)          (( n_working++ )) ;;
     esac
 
     [ -n "$session_id" ] && states_now+="$session_id $state"$'\n'
   done
+  row_order=$(printf '%s' "$row_keys" | sort -k1,1n -k2,2n -k3,3n)
   return 0
 }
 
@@ -215,13 +234,26 @@ check_updates() {
 # look anyway.
 
 # ------------------------------------------------------------ menu bar title
+# The hotkey belongs on the title line and nowhere else: SwiftBar registers a
+# header item's shortcut as "show this menu", while a body item's shortcut runs
+# that item's action instead. Opening the menu is the whole point — from there
+# macOS makes the board keyboard-navigable for free (arrow keys skip the
+# disabled headings and ↳ detail lines, Return clicks the highlighted row).
+bar_line() { # $1: title text  $2: parameters, may be empty
+  local params="$2"
+  [ -n "$MENU_SHORTCUT" ] && params="${params:+$params }shortcut=$MENU_SHORTCUT"
+  printf '%s' "$1"
+  [ -n "$params" ] && printf ' | %s' "$params"
+  printf '\n'
+}
+
 render_title() {
   local n_attention=$(( n_permission + n_waiting + n_ready ))
   if [ "$BAR_STYLE" = "minimal" ]; then
-    if   (( n_permission > 0 )); then echo "✳ $n_attention | color=$RED"
-    elif (( n_attention  > 0 )); then echo "✳ $n_attention | color=$ORANGE"
-    elif (( n_working    > 0 )); then echo "✳ | color=$GRAY"
-    else                              echo "✳ | color=$DIM"
+    if   (( n_permission > 0 )); then bar_line "✳ $n_attention" "color=$RED"
+    elif (( n_attention  > 0 )); then bar_line "✳ $n_attention" "color=$ORANGE"
+    elif (( n_working    > 0 )); then bar_line "✳" "color=$GRAY"
+    else                              bar_line "✳" "color=$DIM"
     fi
     return
   fi
@@ -232,16 +264,21 @@ render_title() {
   (( n_waiting    > 0 )) && title+="🟠${n_waiting} "
   (( n_ready      > 0 )) && title+="🟢${n_ready} "
   (( n_working > 0 )) && [ "$BAR_SHOW_WORKING" = "1" ] && title+="🔵${n_working} "
-  if [ -n "$title" ]; then echo "✳ ${title% }"; else echo "✳ | color=$DIM"; fi
+  if [ -n "$title" ]; then bar_line "✳ ${title% }" ""; else bar_line "✳" "color=$DIM"; fi
 }
 
 # ---------------------------------------------------------------- dropdown
-render_group() { # $1: heading  $2: color  rest: blocks
-  local heading=$1 color=$2 b; shift 2
-  (( $# == 0 )) && return 0
-  echo "$heading | size=10 color=$color"
-  for b in "$@"; do printf '%s\n' "$b"; done
-  echo "---"
+render_group() { # $1: heading  $2: color  $3: state ranks it covers
+  local heading=$1 color=$2 ranks=$3 rank ts idx shown=0
+  while read -r rank ts idx; do
+    [ -n "$rank" ] || continue
+    case " $ranks " in *" $rank "*) ;; *) continue ;; esac
+    (( shown == 0 )) && echo "$heading | size=10 color=$color"
+    printf '%s\n' "${rows[$idx]}"
+    shown=$(( shown + 1 ))
+  done <<<"$row_order"
+  (( shown > 0 )) && echo "---"
+  return 0
 }
 
 render_dropdown() {
@@ -251,9 +288,9 @@ render_dropdown() {
   if (( n_permission + n_waiting + n_ready + n_working == 0 )); then
     echo "No active Claude sessions | color=$GRAY"
   else
-    render_group "NEEDS YOU" "$ORANGE" "${blocks_permission[@]}" "${blocks_waiting[@]}"
-    render_group "READY"     "$GREEN"  "${blocks_ready[@]}"
-    render_group "WORKING"   "$GRAY"   "${blocks_working[@]}"
+    render_group "NEEDS YOU" "$ORANGE" "1 2"
+    render_group "READY"     "$GREEN"  "3"
+    render_group "WORKING"   "$GRAY"   "4"
   fi
 
   if [ -f "$CLAUDEBAR_SOUNDS_FLAG" ]; then

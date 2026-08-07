@@ -76,6 +76,59 @@ title_line() { board | head -n 1; }
   [ "${lines[0]}" = "✳ 🟢1" ]
 }
 
+@test "the title line carries the hotkey that opens the board" {
+  put_record a state=ready
+
+  MENU_SHORTCUT="CMD+OPTION+C" run bash "$BOARD"
+
+  # header item = "show this menu"; on a body item SwiftBar would run its action
+  [ "${lines[0]}" = "✳ 🟢1 | shortcut=CMD+OPTION+C" ]
+}
+
+@test "the hotkey joins the parameters the title already had" {
+  MENU_SHORTCUT="cmd+option+c" BAR_STYLE=minimal run bash "$BOARD"
+
+  [ "${lines[0]}" = "✳ | color=#6e6e73 shortcut=CMD+OPTION+C" ]
+}
+
+@test "no hotkey configured leaves the title exactly as it was" {
+  put_record a state=ready
+
+  run board
+
+  [ "${lines[0]}" = "✳ 🟢1" ]
+}
+
+@test "a hotkey cannot smuggle parameters onto the title line" {
+  # notify.conf is user-edited bash, sourced into the plugin's own shell
+  put_record a state=ready
+
+  MENU_SHORTCUT="CMD+C|href=x" run bash "$BOARD"
+
+  [ "${lines[0]}" = "✳ 🟢1 | shortcut=CMD+CHREFX" ]
+}
+
+@test "rows in a group are ordered longest-waiting first" {
+  # ids chosen so the store globs them the other way round: the board is walked
+  # with arrow keys, so position has to mean something
+  put_record zzz state=waiting project=satlongest ts=$(( $(date +%s) - 600 ))
+  put_record aaa state=waiting project=justarrived ts=$(( $(date +%s) - 60 ))
+
+  run board
+
+  [[ "$output" == *"satlongest"*"justarrived"* ]]
+}
+
+@test "the more urgent state leads within a shared heading" {
+  put_record a state=waiting project=merelywaiting ts=$(( $(date +%s) - 600 ))
+  put_record b state=permission project=blocked ts=$(( $(date +%s) - 60 ))
+
+  run board
+
+  # NEEDS YOU holds both, and permission wins despite having sat there less long
+  [[ "$output" == *"blocked"*"merelywaiting"* ]]
+}
+
 @test "sessions are grouped under the right headings" {
   put_record a state=permission
   put_record b state=ready
