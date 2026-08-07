@@ -1,3 +1,17 @@
+## [1.3.1](https://github.com/triffer/claudebar/compare/v1.3.0...v1.3.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* stop asking for notification and Terminal permissions to offer an update ([207729b](https://github.com/triffer/claudebar/commit/207729b2445637b4f7b988b9eb4b470ae8a97319))
+
+
+### Update
+
+```bash
+npx github:triffer/claudebar#v1.3.1 install
+```
+
 # [1.3.0](https://github.com/triffer/claudebar/compare/v1.2.0...v1.3.0) (2026-08-07)
 
 
