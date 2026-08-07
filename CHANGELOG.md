@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/triffer/claudebar/compare/v1.0.0...v1.1.0) (2026-08-07)
+
+
+### Features
+
+* Reduce stale hours default from 12 hours to 2 hours, so idle sessions are faster removed from the menu bar ([6985efe](https://github.com/triffer/claudebar/commit/6985efe5532ae53c5127a683ffca27cbc052b3ad))
+
 # 1.0.0 (2026-08-06)
 
 
