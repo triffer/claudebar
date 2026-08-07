@@ -1,3 +1,17 @@
+## [1.3.2](https://github.com/triffer/claudebar/compare/v1.3.1...v1.3.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* Remove verbose info from README ([9eefb38](https://github.com/triffer/claudebar/commit/9eefb382d72804d5a2eee555047d7f9844f1294c))
+
+
+### Update
+
+```bash
+npx github:triffer/claudebar#v1.3.2 install
+```
+
 ## [1.3.1](https://github.com/triffer/claudebar/compare/v1.3.0...v1.3.1) (2026-08-07)
 
 
