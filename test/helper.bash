@@ -186,6 +186,7 @@ load_lib() {
   . "$REPO_ROOT/hooks/claudebar-lib/record.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/transcript.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/version.sh"
+  . "$REPO_ROOT/hooks/claudebar-lib/themes.sh"
 }
 
 # Feed a hook event to claude-notify.sh. Args are jq-style key=value pairs.

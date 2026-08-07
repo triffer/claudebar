@@ -30,6 +30,10 @@ with [`examples/demo-board.sh`](examples/demo-board.sh).*
   among your other menu bar apps, and the dropdown opens with a "✳ Claude
   Code sessions" header. Prefer quieter? `BAR_STYLE="minimal"` shows a
   single `✳` that only lights up with a count when sessions need you.
+  `BAR_THEME="cow"` swaps the leading marker for 🐮, permission for 🐽 and
+  ready for 🥛; waiting/working keep their default dots, since color is what
+  tells those two apart. More themes are a case arm away in
+  [`hooks/claudebar-lib/themes.sh`](hooks/claudebar-lib/themes.sh).
 - 🕵️ **Permission triage from the menu** — a red row says *what* Claude wants
   (`wants Bash`), and the full pending command (`↳ wants: Bash: git push
   origin main`) sits right under it. Decide whether it's rubber-stamp or
@@ -192,6 +196,7 @@ commits appear there only after `git fetch sandbox-<name>`.
 | `STALE_HOURS`        | `1`           | Menu bar hides sessions idle longer than this      |
 | `BAR_STYLE`          | `detailed`    | `detailed` = per-state counts in the bar; `minimal` = single ✳ |
 | `BAR_SHOW_WORKING`   | `1`           | Show the 🔵 working count in the detailed bar      |
+| `BAR_THEME`          | `default`     | Icon set for the state markers: `default` or `cow` |
 | `MENU_SHORTCUT`      | `CTRL+OPTION+CMD+C` | Global hotkey that opens the board; empty = none |
 | `UPDATE_CHECK_HOURS` | `24`          | How often to ask GitHub for a newer release; `0` = never |
 

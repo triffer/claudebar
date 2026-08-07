@@ -13,6 +13,8 @@
 #                       🔴2 🟠1 🟢3 🔵2  (permission/waiting/ready/working)
 #   minimal             a single ✳: dim when quiet, orange/red + count when
 #                       sessions need you
+# The glyphs themselves come from BAR_THEME (see hooks/claudebar-lib/themes.sh),
+# default "default"; "cow" is the first alternative.
 
 # ------------------------------------------------------------------ bootstrap
 # This file is installed into SwiftBar's plugin folder, away from the rest of
@@ -34,6 +36,7 @@ bail() { printf '✳ | color=%s\n---\n%s\n' "$DIM" "$1"; exit 0; }
 . "$CLAUDEBAR_LIB/paths.sh"
 . "$CLAUDEBAR_LIB/record.sh"
 . "$CLAUDEBAR_LIB/version.sh"
+. "$CLAUDEBAR_LIB/themes.sh"
 
 command -v jq >/dev/null 2>&1 || bail "jq is required — brew install jq"
 
@@ -41,6 +44,8 @@ claudebar_load_conf
 STALE_HOURS="${STALE_HOURS:-1}"
 BAR_STYLE="${BAR_STYLE:-detailed}"
 BAR_SHOW_WORKING="${BAR_SHOW_WORKING:-1}"
+BAR_THEME="${BAR_THEME:-default}"
+THEME_MARKER=$(claudebar_theme_icon "$BAR_THEME" marker)
 UPDATE_CHECK_HOURS="${UPDATE_CHECK_HOURS:-24}"
 case "$UPDATE_CHECK_HOURS" in ''|*[!0-9]*) UPDATE_CHECK_HOURS=24 ;; esac
 # notify.conf is user-edited bash sourced into this shell, so a hotkey holding a
@@ -67,13 +72,7 @@ ellipsis() { # $1: text, $2: max length
 menu_safe() { local s=${1//|/¦}; printf '%s' "${s//$'\n'/ }"; }
 
 # How each state presents itself: bucket icon, and the phrase the row ends on.
-state_icon() {
-  case "$1" in
-    permission) printf '🔴' ;; waiting) printf '🟠' ;;
-    ready)      printf '🟢' ;; working) printf '🔵' ;;
-    *)          printf '⚪️' ;;
-  esac
-}
+state_icon() { claudebar_theme_icon "$BAR_THEME" "$1"; }
 
 state_verb() { # $1: state  $2: pending tool
   case "$1" in
@@ -250,21 +249,21 @@ bar_line() { # $1: title text  $2: parameters, may be empty
 render_title() {
   local n_attention=$(( n_permission + n_waiting + n_ready ))
   if [ "$BAR_STYLE" = "minimal" ]; then
-    if   (( n_permission > 0 )); then bar_line "✳ $n_attention" "color=$RED"
-    elif (( n_attention  > 0 )); then bar_line "✳ $n_attention" "color=$ORANGE"
-    elif (( n_working    > 0 )); then bar_line "✳" "color=$GRAY"
-    else                              bar_line "✳" "color=$DIM"
+    if   (( n_permission > 0 )); then bar_line "$THEME_MARKER $n_attention" "color=$RED"
+    elif (( n_attention  > 0 )); then bar_line "$THEME_MARKER $n_attention" "color=$ORANGE"
+    elif (( n_working    > 0 )); then bar_line "$THEME_MARKER" "color=$GRAY"
+    else                              bar_line "$THEME_MARKER" "color=$DIM"
     fi
     return
   fi
-  # The leading ✳ identifies this status item as the Claude board among
+  # The leading marker identifies this status item as the Claude board among
   # other menu bar apps.
   local title=""
-  (( n_permission > 0 )) && title+="🔴${n_permission} "
-  (( n_waiting    > 0 )) && title+="🟠${n_waiting} "
-  (( n_ready      > 0 )) && title+="🟢${n_ready} "
-  (( n_working > 0 )) && [ "$BAR_SHOW_WORKING" = "1" ] && title+="🔵${n_working} "
-  if [ -n "$title" ]; then bar_line "✳ ${title% }" ""; else bar_line "✳" "color=$DIM"; fi
+  (( n_permission > 0 )) && title+="$(state_icon permission)${n_permission} "
+  (( n_waiting    > 0 )) && title+="$(state_icon waiting)${n_waiting} "
+  (( n_ready      > 0 )) && title+="$(state_icon ready)${n_ready} "
+  (( n_working > 0 )) && [ "$BAR_SHOW_WORKING" = "1" ] && title+="$(state_icon working)${n_working} "
+  if [ -n "$title" ]; then bar_line "$THEME_MARKER ${title% }" ""; else bar_line "$THEME_MARKER" "color=$DIM"; fi
 }
 
 # ---------------------------------------------------------------- dropdown
@@ -283,7 +282,7 @@ render_group() { # $1: heading  $2: color  $3: state ranks it covers
 
 render_dropdown() {
   echo "---"
-  echo "✳ Claude Code sessions | size=11 color=$GRAY disabled=true"
+  echo "$THEME_MARKER Claude Code sessions | size=11 color=$GRAY disabled=true"
   echo "---"
   if (( n_permission + n_waiting + n_ready + n_working == 0 )); then
     echo "No active Claude sessions | color=$GRAY"

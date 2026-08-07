@@ -255,6 +255,11 @@ lights up with a count when sessions need you.'
 conf_def BAR_SHOW_WORKING '1' \
 'Include the working-session count in the detailed bar (0 = hide).'
 
+conf_def BAR_THEME '"default"' \
+'Icon set for the state markers: "default" (✳🔴🟠🟢🔵) or "cow"
+(🐮 marker, 🐽 permission, 🥛 ready; waiting/working keep their dots).
+See hooks/claudebar-lib/themes.sh to add another.'
+
 conf_def MENU_SHORTCUT '"CTRL+OPTION+CMD+C"' \
 'Global hotkey that opens the board without the mouse. From there ↑/↓ walk the
 sessions and Return focuses the highlighted one. Empty = no hotkey.

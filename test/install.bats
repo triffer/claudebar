@@ -72,10 +72,11 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
   bash -n "$CONF"
 
   for key in IDE_CMD TERMINAL_BUNDLE_ID STALE_HOURS BAR_STYLE BAR_SHOW_WORKING \
-             UPDATE_CHECK_HOURS MENU_SHORTCUT; do
+             BAR_THEME UPDATE_CHECK_HOURS MENU_SHORTCUT; do
     grep -q "^$key=" "$CONF"
   done
-  ( . "$CONF"; [ "$BAR_STYLE" = "detailed" ] && [ "$STALE_HOURS" = "1" ] )
+  ( . "$CONF"; [ "$BAR_STYLE" = "detailed" ] && [ "$STALE_HOURS" = "1" ] \
+      && [ "$BAR_THEME" = "default" ] )
 }
 
 @test "the default hotkey is one the board actually renders" {

@@ -49,6 +49,27 @@ title_line() { board | head -n 1; }
   [ "${lines[0]}" = "✳ 🟢1" ]
 }
 
+@test "BAR_THEME=cow swaps the marker and the permission/ready icons" {
+  put_record a state=permission
+  put_record b state=ready
+  put_record c state=waiting
+  put_record d state=working
+
+  BAR_THEME=cow run bash "$BOARD"
+
+  [ "${lines[0]}" = "🐮 🐽1 🟠1 🥛1 🔵1" ]
+  [[ "$output" == *"🐽 "* ]]
+  [[ "$output" == *"🥛 "* ]]
+}
+
+@test "an unknown BAR_THEME falls back to the default icons" {
+  put_record a state=ready
+
+  BAR_THEME=nope run bash "$BOARD"
+
+  [ "${lines[0]}" = "✳ 🟢1" ]
+}
+
 @test "the minimal style shows one attention count" {
   put_record a state=permission
   put_record b state=ready
