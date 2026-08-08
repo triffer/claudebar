@@ -39,6 +39,8 @@ now=$(date +%s)
 # The record is assembled by the shared builder, so demo rows can never drift
 # out of the schema the board reads — which is what a screenshot fixture would
 # otherwise do quietly the next time a field is added.
+# The locals are the record schema; claudebar_record_build reads them by name.
+# shellcheck disable=SC2034
 write() {
   local ago="$2"
   local session_id="demo-$1" origin="$3" project="$4" branch="$5" state="$6"
