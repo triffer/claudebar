@@ -190,6 +190,16 @@ flip a busy session. `PreToolUse` fires before the permission prompt resolves,
 so it also captures the pending tool and input into a per-session context file.
 That's how a red row can say what Claude wants to run.
 
+One exception to the table: a session that farmed work out to background agents
+sits at the prompt while they run, so `Stop` fires and Claude Code goes on to
+notify that it is waiting for your input — but it is neither ready for you nor
+waiting for you. Whichever agent finishes last wakes it up again. So on `Stop`
+and on `Notification` the hook checks the transcript for agents that were
+launched and never reported back, and a session with any still out stays 🔵
+`working` instead of joining the rows asking for you. Permission prompts are
+never reinterpreted this way; those do block on you. Neither is `SessionStart`:
+a resumed transcript can name agents that died with the process that ran them.
+
 ### Session titles
 
 Claude Code drops title records into the transcript JSONL — the strings its
