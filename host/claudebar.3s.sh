@@ -147,6 +147,9 @@ state_rank() {
   esac
 }
 
+# `cwd` and `event` are declared because claudebar_record_read assigns the whole
+# schema; the board simply has no row to render them on.
+# shellcheck disable=SC2034
 collect_sessions() {
   local f age now; now=$(date +%s)
   shopt -s nullglob
@@ -331,6 +334,10 @@ render_about() {
 }
 
 # --------------------------------------------------------------------- main
+# See claude-notify.sh: sourcing stops here so the renderers can be unit-tested
+# without a store to read or a bar to paint.
+[ -n "${CLAUDEBAR_SOURCE_ONLY:-}" ] && return 0
+
 collect_sessions
 collect_sounds
 check_updates

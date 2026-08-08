@@ -22,6 +22,7 @@ else
   # Focusing a window is never worth failing over: fall back to reading the
   # conf straight from its conventional location.
   CONF="${CLAUDE_NOTIFY_HOME:-$HOME/.claude}/notify.conf"
+  # shellcheck disable=SC1090  # the user's file; nothing to follow
   [ -f "$CONF" ] && . "$CONF" 2>/dev/null
 fi
 

@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# Every CLAUDEBAR_* path below is read by the scripts that source this file, not
+# by this file — which shellcheck cannot see from here.
+# shellcheck disable=SC2034
+#
 # claudebar/lib/paths.sh — the one place that knows where claudebar keeps things.
 #
 # Sourced by every claudebar script (hook, watcher, focus action, SwiftBar
@@ -58,6 +62,8 @@ claudebar_signals_outbox() {
 # STALE_HOURS, IDE_CMD, …). Missing or unreadable is normal, never fatal —
 # every consumer defaults its own keys.
 claudebar_load_conf() {
+  # The user's file, not ours — there is nothing for shellcheck to follow.
+  # shellcheck disable=SC1090
   [ -f "$CLAUDEBAR_CONF" ] && . "$CLAUDEBAR_CONF" 2>/dev/null
   return 0
 }
