@@ -26,7 +26,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # semantic-release 25 requires ^22.14.0 || >=24.10.0.
+          node-version: 24
 
       - run: npm ci
 
