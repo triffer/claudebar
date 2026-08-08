@@ -1,3 +1,17 @@
+## [1.5.1](https://github.com/triffer/claudebar/compare/v1.5.0...v1.5.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **hook:** keep sessions with background agents out of NEEDS YOU ([#16](https://github.com/triffer/claudebar/issues/16)) ([6affbec](https://github.com/triffer/claudebar/commit/6affbecc6b2422d5608ee3e4af4ec767b729f57e))
+
+
+### Update
+
+```bash
+npx github:triffer/claudebar#v1.5.1 install
+```
+
 # [1.5.0](https://github.com/triffer/claudebar/compare/v1.4.0...v1.5.0) (2026-08-07)
 
 
