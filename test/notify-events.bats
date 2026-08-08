@@ -73,6 +73,76 @@ teardown() { claudebar_teardown; }
   [ "$(record_field s1 state)" = "waiting" ]
 }
 
+@test "Stop with background agents still running is not ready" {
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  # the turn ended, but the session has agents out and resumes on its own
+  [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "Stop once every agent has reported back is ready" {
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+  notify_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "ready" ]
+}
+
+@test "a resumed session is ready however its transcript ends" {
+  # the agents in an inherited transcript died with the process that ran them,
+  # so an unpaired launch in there says nothing about this session
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event SessionStart s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "ready" ]
+}
+
+@test "an idle Notification with background agents still running stays working" {
+  # the fan-out: one agent launched, nothing reported back yet
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Notification s1 message="Claude is waiting for your input" \
+    transcript_path="$TMPDIR/t.jsonl"
+
+  # it wakes itself when the last agent finishes — nobody has to go look
+  [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "once every agent has reported back, an idle Notification does wait" {
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+  notify_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Notification s1 message="Claude is waiting for your input" \
+    transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "waiting" ]
+}
+
+@test "one agent still out keeps the session working" {
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+  launch_agent_transcript "$TMPDIR/t.jsonl" af3702b2a3b70bc7d
+  notify_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Notification s1 message="Claude is waiting for your input" \
+    transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "a permission prompt outranks running agents" {
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Notification s1 message="Claude needs your permission to use Bash" \
+    transcript_path="$TMPDIR/t.jsonl"
+
+  # this one really does block on the user, agents or no agents
+  [ "$(record_field s1 state)" = "permission" ]
+}
+
 @test "sub-agent events are ignored" {
   # sub-agents carry an agent_id; the main agent never does
   local json

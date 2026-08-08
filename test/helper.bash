@@ -201,6 +201,24 @@ send_event() { # $1: event  $2: session id  rest: extra JSON via jq --arg
   bash "$HOOK" <<<"$json"
 }
 
+# The two transcript records a background agent leaves behind, abridged to the
+# parts claudebar reads — the tool result that says where its output will go,
+# and the notification it fires when it stops. Copied in shape from a real
+# transcript; the rest of both records is prose claudebar never looks at.
+launch_agent_transcript() { # $1: transcript path  $2: agent id
+  jq -nc --arg id "$2" '{type: "user", message: {content: [{type: "tool_result",
+    content: [{type: "text", text: "Async agent launched successfully.
+agentId: \($id)
+output_file: /tmp/tasks/\($id).output"}]}]}}' >> "$1"
+}
+
+notify_agent_transcript() { # $1: transcript path  $2: agent id
+  jq -nc --arg id "$2" '{type: "user", message: {content: "<task-notification>
+<task-id>\($id)</task-id>
+<output-file>/tmp/tasks/\($id).output</output-file>
+<status>completed</status>"}}' >> "$1"
+}
+
 record_file() { printf '%s/%s.json' "$SESSIONS_DIR" "$1"; }
 
 # Read one field out of a stored record.

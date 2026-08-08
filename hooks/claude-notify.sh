@@ -173,6 +173,28 @@ hook_mode() {
 
   local STATE PREV_STATE PROMPT PENDING SUMMARY SCAN_TS
   STATE=$(classify_event "${EVENT:-}" "$MESSAGE" "${SOURCE:-}") || return 0
+
+  # Two events say the session is idle: Stop, where the main loop hands the
+  # prompt back, and — a minute later — the "Claude is waiting for your input"
+  # Notification. Neither is true while a fan-out of background agents is still
+  # out. That session is not ready for you and not waiting for you: the last
+  # agent to finish wakes it up again. It is working, and the agents are what
+  # is working. A permission prompt is never second-guessed this way — that one
+  # really does block on you.
+  #
+  # SessionStart is deliberately not in here: a resumed transcript can carry
+  # launches whose agents died with the process that ran them, and those would
+  # read as pending for as long as the row lives.
+  case "$EVENT" in
+    Stop|Notification)
+      if [ "$STATE" != "permission" ] \
+         && claudebar_transcript_pending_agents "${TRANSCRIPT:-}"; then
+        STATE="working"
+        MESSAGE="Waiting on its own background agents"
+      fi
+      ;;
+  esac
+
   case "$EVENT" in
     SessionStart) MESSAGE="Session started" ;;
     Stop)         MESSAGE="${MESSAGE:-Finished responding}" ;;
