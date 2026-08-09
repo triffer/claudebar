@@ -20,6 +20,14 @@ teardown() { claudebar_teardown; }
 
 install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
 
+# One field of the version stamp install.sh generated. A helper rather than a
+# multi-line `( . installed.sh; [ ... ] )` inside each test, because bats blames
+# a failing multi-line compound command on an earlier line of the test — which
+# is how a real bug in the stamp first read as a crash in the installer.
+stamp() { # $1: variable name
+  ( . "$LIB/installed.sh"; printf '%s' "${!1-}" )
+}
+
 @test "a fresh install lays down scripts, lib and config" {
   run install_run
 
@@ -40,10 +48,9 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
 
   # nothing on the installed side sits next to a package.json, so this stamp is
   # the only place the running version exists
-  ( . "$LIB/installed.sh"
-    [ "$CLAUDEBAR_VERSION" = "$(jq -r .version "$REPO_ROOT/package.json")" ]
-    [ "$CLAUDEBAR_INSTALL_METHOD" = "git" ]      # this repo is a checkout
-    [ "$CLAUDEBAR_INSTALL_SOURCE" = "$REPO_ROOT" ] )
+  [ "$(stamp CLAUDEBAR_VERSION)" = "$(jq -r .version "$REPO_ROOT/package.json")" ]
+  [ "$(stamp CLAUDEBAR_INSTALL_METHOD)" = "git" ]      # this repo is a checkout
+  [ "$(stamp CLAUDEBAR_INSTALL_SOURCE)" = "$REPO_ROOT" ]
 }
 
 @test "the stamp survives a source path made of shell syntax" {
@@ -53,8 +60,7 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
 
   bash "$weird/install.sh" --no-deps
 
-  ( . "$LIB/installed.sh"
-    [ "$CLAUDEBAR_INSTALL_SOURCE" = "$weird" ] )
+  [ "$(stamp CLAUDEBAR_INSTALL_SOURCE)" = "$weird" ]
 }
 
 @test "an install without git history updates through npx instead" {
@@ -63,7 +69,7 @@ install_run() { bash "$REPO_ROOT/install.sh" --no-deps "$@"; }
 
   bash "$TEST_ROOT/npx-cache/install.sh" --no-deps
 
-  ( . "$LIB/installed.sh"; [ "$CLAUDEBAR_INSTALL_METHOD" = "npx" ] )
+  [ "$(stamp CLAUDEBAR_INSTALL_METHOD)" = "npx" ]
 }
 
 @test "the generated config carries every key and is valid bash" {
