@@ -24,7 +24,17 @@ UPDATE="$REPO_ROOT/host/claudebar-update.sh"
 CLAUDEBAR_STUBBED_COMMANDS=(defaults open launchctl afplay osascript brew curl npx pbcopy)
 
 claudebar_setup() {
-  TEST_ROOT="$(mktemp -d)"
+  # Explicit template: BSD and GNU mktemp disagree about a bare `-d`, and the
+  # suite has to run on both. The name also makes a leaked tree obvious.
+  #
+  # Stripping the trailing slash is load-bearing, not tidiness. macOS sets
+  # TMPDIR to /var/folders/…/T/ WITH one, and BSD mktemp hands the resulting
+  # `T//claudebar-test.XXXX` straight back where GNU mktemp collapses it. Any
+  # test comparing a path built from TEST_ROOT against one a script derived
+  # with `cd … && pwd` then fails on macOS alone, because cd normalises `//`
+  # away and the two spellings of the same directory no longer match.
+  local tmp=${TMPDIR:-/tmp}
+  TEST_ROOT="$(mktemp -d "${tmp%/}/claudebar-test.XXXXXX")"
 
   export HOME="$TEST_ROOT/home"
   export CLAUDE_NOTIFY_HOME="$TEST_ROOT/claude"
@@ -178,6 +188,21 @@ git_commit() { # $1: repo  $2: body of its install.sh
 claudebar_teardown() {
   [ -n "${TEST_ROOT:-}" ] && rm -rf "$TEST_ROOT"
   return 0
+}
+
+# Source the hook and the plugin for their functions alone — the
+# CLAUDEBAR_SOURCE_ONLY guard at the bottom of each stops before main, so a test
+# can call one function without a store to read or a session to drive.
+load_hook() {
+  CLAUDEBAR_SOURCE_ONLY=1
+  . "$HOOK"
+  unset CLAUDEBAR_SOURCE_ONLY
+}
+
+load_board() {
+  CLAUDEBAR_SOURCE_ONLY=1
+  . "$BOARD"
+  unset CLAUDEBAR_SOURCE_ONLY
 }
 
 # Source the library directly, for unit-level tests.

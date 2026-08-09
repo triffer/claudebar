@@ -150,6 +150,10 @@ resolve_project() { # $1: cwd — sets PROJECT BRANCH ROOT
 }
 
 # ------------------------------------------------------------------ hook mode
+# The record fields near the end look unused to shellcheck: claudebar_record_build
+# reads them by name through indirect expansion, which is the whole point of
+# keeping the field list in one place (see claudebar-lib/record.sh).
+# shellcheck disable=SC2034
 hook_mode() {
   local input; input=$(cat)
 
@@ -242,6 +246,14 @@ hook_mode() {
 }
 
 # ---------------------------------------------------------------------- main
+# Sourcing this file defines its functions and stops here, which is how the unit
+# tests reach classify_event and friends without driving a whole session. The
+# opt-in is an explicit variable rather than a $0/BASH_SOURCE comparison: those
+# two are equal in every way Claude Code invokes the hook, but if they ever were
+# not, the hook would silently do nothing — and a hook that quietly stops
+# reporting is worse than no unit tests.
+[ -n "${CLAUDEBAR_SOURCE_ONLY:-}" ] && return 0
+
 if [ "${1:-}" = "--deliver" ]; then
   claudebar_record_store
   exit $?
