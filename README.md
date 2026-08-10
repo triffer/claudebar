@@ -4,12 +4,12 @@ A [SwiftBar](https://swiftbar.app) plugin that puts the state of every Claude
 Code session in your macOS menu bar, including sessions running inside Docker
 sandboxes (`sbx`). Bash and `jq`, nothing else.
 
-![The claudebar menu bar item among other status items](assets/bar.png)
+![The claudebar menu bar item](assets/bar.svg)
 
 At rest it is one status item: `✳` plus a count per state — permission,
 waiting, ready, working. Zero counts are hidden.
 
-![The claudebar dropdown showing host and sandbox sessions](assets/board.png)
+![The claudebar dropdown showing host and sandbox sessions](assets/board.svg)
 
 Open it and each session is a row: state, repo `@` branch, how long it has sat
 there, and a subtitle saying what the session is about. The subtitle is the
@@ -24,7 +24,11 @@ longest-waiting first.
 
 Sounds are off by default — the 🔕/🔔 row at the bottom of the dropdown turns
 them on. To see the board without running any sessions, run
-[`examples/demo-board.sh`](examples/demo-board.sh).
+[`examples/demo-board.sh`](examples/demo-board.sh); the two pictures above are
+drawn from those same sessions by
+[`examples/render-screens.sh`](examples/render-screens.sh), which runs the real
+plugin and turns its output into the SVGs, so they can be regenerated without a
+Mac.
 
 ## Install
 
