@@ -34,6 +34,7 @@ done
 . "$CLAUDEBAR_LIB/paths.sh"
 . "$CLAUDEBAR_LIB/record.sh"
 . "$CLAUDEBAR_LIB/transcript.sh"
+. "$CLAUDEBAR_LIB/jobs.sh"
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -174,6 +175,13 @@ hook_mode() {
     <<<"$input" 2>/dev/null)"
   [ -n "${CWD:-}" ] || CWD="$PWD"
   [ "${TOOL_ARG:-}" = "{}" ] && TOOL_ARG=""
+
+  # Skip the one event a background job has nothing to say with. A job runs as a
+  # claude process of its own, so unlike a sub-agent it has no agent_id to skip
+  # it by, and its SessionStart claimed a "ready for you" row for a session
+  # nobody had prompted — see claudebar-lib/jobs.sh. Every later event does mean
+  # something: the job is working, or it stopped wanting a go-ahead.
+  [ "$EVENT" = "SessionStart" ] && claudebar_session_is_bg_job "$SESSION_ID" && return 0
 
   local STATE PREV_STATE PROMPT PENDING SUMMARY SCAN_TS
   STATE=$(classify_event "${EVENT:-}" "$MESSAGE" "${SOURCE:-}") || return 0

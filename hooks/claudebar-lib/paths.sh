@@ -30,6 +30,13 @@ CLAUDEBAR_SOUNDS_FLAG="$CLAUDEBAR_HOME/notify-sounds-on"
 # ~/.claude, which is shared space. See version.sh for the shape.
 CLAUDEBAR_UPDATE_CACHE="$CLAUDEBAR_HOME/claudebar-update.json"
 
+# Claude Code's own state, which claudebar reads and never writes. Deliberately
+# not derived from CLAUDEBAR_HOME: that variable moves *our* store wherever the
+# user wants it, while this one has to keep pointing at Claude Code's directory —
+# so it follows the variable Claude Code itself honours. See jobs.sh.
+CLAUDEBAR_CC_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CLAUDEBAR_CC_JOBS_DIR="$CLAUDEBAR_CC_HOME/jobs"
+
 # Host side of the signal bridge: where the watcher picks records up, and where
 # rejects are parked. A SIBLING of ~/.claude on purpose — sandboxes mount
 # ~/.claude read-only, so the writable bridge has to live outside it.
