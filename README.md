@@ -157,6 +157,7 @@ plain `⌘⌥<letter>`, where JetBrains keeps its refactorings.
 
 | File                                | Responsibility |
 |-------------------------------------|----------------|
+| `hooks/claudebar-lib/jobs.sh`       | Recognising one of Claude Code's own background jobs |
 | `hooks/claudebar-lib/paths.sh`      | Where things live: the store, the config, both ends of the signal bridge |
 | `hooks/claudebar-lib/record.sh`     | The status record: its field list, building it, reading it back, storing it, relaying it |
 | `hooks/claudebar-lib/themes.sh`     | The state marker icon sets; a new theme is one more case arm |

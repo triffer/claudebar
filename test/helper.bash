@@ -38,6 +38,10 @@ claudebar_setup() {
 
   export HOME="$TEST_ROOT/home"
   export CLAUDE_NOTIFY_HOME="$TEST_ROOT/claude"
+  # Claude Code's own directory, which the hook reads to recognise background
+  # jobs. Set explicitly rather than left to $HOME/.claude: a developer running
+  # the suite may well have it pointed somewhere real.
+  export CLAUDE_CONFIG_DIR="$TEST_ROOT/cc"
   export TMPDIR="$TEST_ROOT/tmp"
   export CLAUDEBAR_LIB="$REPO_ROOT/hooks/claudebar-lib"
   # Set-but-empty forces local delivery: the suite runs on Linux CI, where the
@@ -52,8 +56,9 @@ claudebar_setup() {
   export UPDATE_CHECK_HOURS=0
 
   SESSIONS_DIR="$CLAUDE_NOTIFY_HOME/notifier-sessions"
+  JOBS_DIR="$CLAUDE_CONFIG_DIR/jobs"
   STUB_CALLS="$TEST_ROOT/stub-calls.log"
-  mkdir -p "$HOME" "$SESSIONS_DIR" "$TMPDIR" "$CLAUDE_SIGNALS_INBOX" \
+  mkdir -p "$HOME" "$SESSIONS_DIR" "$JOBS_DIR" "$TMPDIR" "$CLAUDE_SIGNALS_INBOX" \
            "$CLAUDEBAR_PLUGIN_DIR"
   : > "$STUB_CALLS"
 
@@ -62,6 +67,9 @@ claudebar_setup() {
 
   # git metadata would leak the real repo's branch into every record
   unset GIT_DIR GIT_WORK_TREE
+  # Run the suite from inside a background job and every session under test would
+  # inherit its markers — and be taken for a job.
+  unset CLAUDE_JOB_DIR CLAUDE_CODE_SESSION_KIND
 }
 
 claudebar_install_stubs() {
@@ -92,7 +100,8 @@ clipboard() { cat "$TEST_ROOT/clipboard"; }
 # in this file must not be able to reach the developer's machine quietly.
 claudebar_assert_isolated() {
   local var
-  for var in HOME CLAUDE_NOTIFY_HOME TMPDIR CLAUDE_SIGNALS_INBOX CLAUDEBAR_PLUGIN_DIR; do
+  for var in HOME CLAUDE_NOTIFY_HOME CLAUDE_CONFIG_DIR TMPDIR CLAUDE_SIGNALS_INBOX \
+             CLAUDEBAR_PLUGIN_DIR; do
     case "${!var}" in
       "$TEST_ROOT"/*) ;;
       *) printf 'claudebar tests: %s=%s is outside the test tree — refusing to run\n' \
@@ -210,8 +219,15 @@ load_lib() {
   . "$REPO_ROOT/hooks/claudebar-lib/paths.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/record.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/transcript.sh"
+  . "$REPO_ROOT/hooks/claudebar-lib/jobs.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/version.sh"
   . "$REPO_ROOT/hooks/claudebar-lib/themes.sh"
+}
+
+# The directory Claude Code creates for a background job, named after the first
+# 8 characters of the job session's id — all the hook needs to recognise one.
+put_bg_job() { # $1: session id
+  mkdir -p "$JOBS_DIR/${1:0:8}"
 }
 
 # Feed a hook event to claude-notify.sh. Args are jq-style key=value pairs.

@@ -154,6 +154,49 @@ teardown() { claudebar_teardown; }
   [ ! -f "$(record_file sub)" ]
 }
 
+@test "a background job claims no row before it is prompted" {
+  # a job runs as a claude process of its own, so its hooks carry no agent_id —
+  # nothing but the job directory tells this SessionStart apart from a terminal's
+  put_bg_job bg000001-aaaa-bbbb-cccc-dddddddddddd
+
+  send_event SessionStart bg000001-aaaa-bbbb-cccc-dddddddddddd
+
+  [ ! -f "$(record_file bg000001-aaaa-bbbb-cccc-dddddddddddd)" ]
+}
+
+@test "a background job is recognised by the markers in its environment" {
+  export CLAUDE_CODE_SESSION_KIND=bg
+
+  send_event SessionStart s1
+
+  [ ! -f "$(record_file s1)" ]
+}
+
+@test "a background job that gets to work does get a row" {
+  put_bg_job s1
+
+  send_event UserPromptSubmit s1 prompt="optimize the thresholds"
+
+  [ "$(record_field s1 state)" = "working" ]
+  [ "$(record_field s1 prompt)" = "optimize the thresholds" ]
+}
+
+@test "a background job that stops wanting an answer does get a row" {
+  put_bg_job s1
+
+  send_event Stop s1
+
+  [ "$(record_field s1 state)" = "ready" ]
+}
+
+@test "a terminal in a project that also has jobs keeps its own row" {
+  put_bg_job bg000001-aaaa-bbbb-cccc-dddddddddddd
+
+  send_event SessionStart s1
+
+  [ "$(record_field s1 state)" = "ready" ]
+}
+
 @test "unknown events produce no record" {
   send_event PostToolUse s1
 
