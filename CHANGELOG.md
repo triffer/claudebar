@@ -1,3 +1,17 @@
+## [1.5.2](https://github.com/triffer/claudebar/compare/v1.5.1...v1.5.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **hook:** keep background jobs off the board until they do something ([#19](https://github.com/triffer/claudebar/issues/19)) ([297df46](https://github.com/triffer/claudebar/commit/297df464a426db2d88117f1d0a425a3fbfdc638e))
+
+
+### Update
+
+```bash
+npx github:triffer/claudebar#v1.5.2 install
+```
+
 ## [1.5.1](https://github.com/triffer/claudebar/compare/v1.5.0...v1.5.1) (2026-08-08)
 
 
