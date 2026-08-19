@@ -1,3 +1,17 @@
+## [1.5.3](https://github.com/triffer/claudebar/compare/v1.5.2...v1.5.3) (2026-08-19)
+
+
+### Bug Fixes
+
+* **hook:** count workflow fan-outs, and stop counting dead launches ([#20](https://github.com/triffer/claudebar/issues/20)) ([0e2a114](https://github.com/triffer/claudebar/commit/0e2a114c4448e73fbd7f12cd282f4b7c498737c2))
+
+
+### Update
+
+```bash
+npx github:triffer/claudebar#v1.5.3 install
+```
+
 ## [1.5.2](https://github.com/triffer/claudebar/compare/v1.5.1...v1.5.2) (2026-08-10)
 
 

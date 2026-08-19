@@ -1,6 +1,6 @@
 {
   "name": "claudebar",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Claude Code session status in your macOS menu bar (SwiftBar).",
   "bin": {
     "claudebar": "bin/claudebar.js"
