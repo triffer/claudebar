@@ -253,6 +253,17 @@ agentId: \($id)
 output_file: /tmp/tasks/\($id).output"}]}]}}' >> "$1"
 }
 
+# A workflow launch. Claude Code registers it as a background run like an async
+# agent and reports it done the same way, but its tool result names no output
+# file — the run's transcript lives under subagents/workflows/ — so the task id
+# is the only thing the launch has in common with the shape above.
+launch_workflow_transcript() { # $1: transcript path  $2: task id
+  jq -nc --arg id "$2" '{type: "user", toolUseResult: {status: "async_launched",
+    taskId: $id, taskType: "local_workflow", workflowName: "review-branch",
+    runId: "wf_\($id)", summary: "Parallel multi-lens review",
+    transcriptDir: "/tmp/subagents/workflows/wf_\($id)"}}' >> "$1"
+}
+
 notify_agent_transcript() { # $1: transcript path  $2: agent id
   jq -nc --arg id "$2" '{type: "user", message: {content: "<task-notification>
 <task-id>\($id)</task-id>
