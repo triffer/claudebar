@@ -66,8 +66,9 @@ classify_event() { # $1: event  $2: notification message  $3: SessionStart sourc
 
 # ------------------------------------------------------------------- context
 # Per-session state carried across hook invocations, one field per line: last
-# state, last user prompt, last tool seen at PreToolUse, session title, and
-# when that title was last looked for.
+# state, last user prompt, last tool seen at PreToolUse, session title, when
+# that title was last looked for, and the background runs the transcript was
+# already waiting on when this session started.
 #
 # The tool line is what makes permission triage possible: PreToolUse fires
 # BEFORE the permission prompt resolves, so by the time a permission
@@ -77,18 +78,20 @@ classify_event() { # $1: event  $2: notification message  $3: SessionStart sourc
 # read back empty.
 context_path() { printf '%s/claude-notify-%s.ctx' "${TMPDIR:-/tmp}" "$1"; }
 
-context_load() { # $1: session id — sets PREV_STATE PROMPT PENDING SUMMARY SCAN_TS
+context_load() { # $1: session id — sets PREV_STATE PROMPT PENDING SUMMARY SCAN_TS STALE_AGENTS
   local ctx; ctx=$(context_path "$1")
-  PREV_STATE=""; PROMPT=""; PENDING=""; SUMMARY=""; SCAN_TS=""
+  PREV_STATE=""; PROMPT=""; PENDING=""; SUMMARY=""; SCAN_TS=""; STALE_AGENTS=""
   [ -f "$ctx" ] && { IFS= read -r PREV_STATE; IFS= read -r PROMPT; IFS= read -r PENDING
-                     IFS= read -r SUMMARY;    IFS= read -r SCAN_TS; } < "$ctx"
+                     IFS= read -r SUMMARY;    IFS= read -r SCAN_TS
+                     IFS= read -r STALE_AGENTS; } < "$ctx"
   case "$SCAN_TS" in ""|*[!0-9]*) SCAN_TS=0 ;; esac
   return 0
 }
 
 context_save() { # $1: session id
-  printf '%s\n%s\n%s\n%s\n%s\n' \
-    "$STATE" "$PROMPT" "$PENDING" "$SUMMARY" "$SCAN_TS" > "$(context_path "$1")" 2>/dev/null
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n' \
+    "$STATE" "$PROMPT" "$PENDING" "$SUMMARY" "$SCAN_TS" "$STALE_AGENTS" \
+    > "$(context_path "$1")" 2>/dev/null
   return 0
 }
 
@@ -183,8 +186,25 @@ hook_mode() {
   # something: the job is working, or it stopped wanting a go-ahead.
   [ "$EVENT" = "SessionStart" ] && claudebar_session_is_bg_job "$SESSION_ID" && return 0
 
-  local STATE PREV_STATE PROMPT PENDING SUMMARY SCAN_TS
+  local STATE PREV_STATE PROMPT PENDING SUMMARY SCAN_TS STALE_AGENTS
   STATE=$(classify_event "${EVENT:-}" "$MESSAGE" "${SOURCE:-}") || return 0
+
+  context_load "$SESSION_ID"
+  context_update "$EVENT"
+
+  # A resumed transcript opens with the previous run's launches in it, and the
+  # agents behind them died with the process that ran them. So whatever this
+  # transcript already claims to be waiting on at SessionStart belongs to that
+  # run, not this one, and is written down here for the check below to subtract.
+  # Without it a single launch that never got its notification would read as
+  # pending for as long as the row lives — and a row that is permanently
+  # "working" is a row that never asks for you.
+  #
+  # SessionStart from auto-compact never reaches this line (classify_event
+  # returns early), which is what it wants: compaction is mid-task, and the
+  # agents out at that moment are very much this run's.
+  [ "$EVENT" = "SessionStart" ] &&
+    STALE_AGENTS=$(claudebar_transcript_running_ids "${TRANSCRIPT:-}")
 
   # Two events say the session is idle: Stop, where the main loop hands the
   # prompt back, and — a minute later — the "Claude is waiting for your input"
@@ -193,14 +213,10 @@ hook_mode() {
   # agent to finish wakes it up again. It is working, and the agents are what
   # is working. A permission prompt is never second-guessed this way — that one
   # really does block on you.
-  #
-  # SessionStart is deliberately not in here: a resumed transcript can carry
-  # launches whose agents died with the process that ran them, and those would
-  # read as pending for as long as the row lives.
   case "$EVENT" in
     Stop|Notification)
       if [ "$STATE" != "permission" ] \
-         && claudebar_transcript_pending_agents "${TRANSCRIPT:-}"; then
+         && claudebar_transcript_pending_agents "${TRANSCRIPT:-}" "$STALE_AGENTS"; then
         STATE="working"
         MESSAGE="Waiting on its own background agents"
       fi
@@ -211,9 +227,6 @@ hook_mode() {
     SessionStart) MESSAGE="Session started" ;;
     Stop)         MESSAGE="${MESSAGE:-Finished responding}" ;;
   esac
-
-  context_load "$SESSION_ID"
-  context_update "$EVENT"
 
   local ts; ts=$(date +%s)
   refresh_title "$EVENT" "${TRANSCRIPT:-}" "$ts"

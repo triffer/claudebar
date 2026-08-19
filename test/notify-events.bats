@@ -101,6 +101,46 @@ teardown() { claudebar_teardown; }
   [ "$(record_field s1 state)" = "ready" ]
 }
 
+@test "a launch inherited from the previous run never pins the session" {
+  # the agent behind it is gone, and its notification is never coming — left to
+  # count, it would hold the row at "working" for the rest of the session
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+  send_event SessionStart s1 transcript_path="$TMPDIR/t.jsonl"
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "ready" ]
+}
+
+@test "a launch made after the session started still counts" {
+  send_event SessionStart s1 transcript_path="$TMPDIR/t.jsonl"
+  launch_agent_transcript "$TMPDIR/t.jsonl" af3702b2a3b70bc7d
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "an inherited launch does not mask a live one" {
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+  send_event SessionStart s1 transcript_path="$TMPDIR/t.jsonl"
+  launch_agent_transcript "$TMPDIR/t.jsonl" af3702b2a3b70bc7d
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "auto-compaction does not disown the agents that are out" {
+  send_event SessionStart s1 transcript_path="$TMPDIR/t.jsonl"
+  launch_agent_transcript "$TMPDIR/t.jsonl" af3702b2a3b70bc7d
+  send_event SessionStart s1 source=compact transcript_path="$TMPDIR/t.jsonl"
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "working" ]
+}
+
 @test "an idle Notification with background agents still running stays working" {
   # the fan-out: one agent launched, nothing reported back yet
   launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
@@ -131,6 +171,49 @@ teardown() { claudebar_teardown; }
     transcript_path="$TMPDIR/t.jsonl"
 
   [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "an idle Notification with a workflow still running stays working" {
+  # a workflow's launch names no output file, so the shape above misses it
+  # entirely — five agents out and the board said "waiting for your input"
+  launch_workflow_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Notification s1 message="Claude is waiting for your input" \
+    transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "Stop once the workflow has reported back is ready" {
+  launch_workflow_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+  notify_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "ready" ]
+}
+
+@test "a workflow and an agent are counted in the same tally" {
+  launch_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+  launch_workflow_transcript "$TMPDIR/t.jsonl" af3702b2a3b70bc7d
+  notify_agent_transcript "$TMPDIR/t.jsonl" a37006fee507b4609
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "working" ]
+}
+
+@test "a task id outside a launch record is not a running agent" {
+  # a taskId only means "launched" as part of an async_launched result. Other
+  # records carry one too, and reading one as a launch would pin the row to
+  # "working" — hiding a session that really does want you
+  jq -nc '{type: "user", toolUseResult: {taskId: "a37006fee507b4609",
+    status: "pending", subject: "write the migration",
+    outputDir: "/tmp/tasks/"}}' >> "$TMPDIR/t.jsonl"
+
+  send_event Stop s1 transcript_path="$TMPDIR/t.jsonl"
+
+  [ "$(record_field s1 state)" = "ready" ]
 }
 
 @test "a permission prompt outranks running agents" {
